@@ -179,7 +179,7 @@ char *com_getenv(char *keyword)
 	return 0;
 }
 
-static int load_and_run_DOS_program(char *command, char *cmdline)
+static int load_and_run_DOS_program(char *command, char *cmdline, int quit)
 {
 	struct param4a {
 		unsigned short envframe;
@@ -221,19 +221,23 @@ static int load_and_run_DOS_program(char *command, char *cmdline)
 	LWORD(edx) = FP_OFF32(cmd);
 	
 	LWORD(eax) = 0x4b00;
+
+	if (quit)
+		fake_call_to(BIOSSEG, 0xfff0);
+
 	real_run_int(0x21);
 
 	return 0;
 }
 
-int com_system(char *command)
+int com_system(char *command, int quit)
 {
 	char *program = com_getenv("COMSPEC");
 	char cmdline[256];
 
 	snprintf(cmdline, sizeof(cmdline), "/C %s", command);
 	if (!program) program = "\\COMMAND.COM";
-	return load_and_run_DOS_program(program, cmdline);
+	return load_and_run_DOS_program(program, cmdline, quit);
 }
 
 static char * com_dosallocmem(int size)
