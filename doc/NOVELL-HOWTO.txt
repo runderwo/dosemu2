@@ -1,8 +1,7 @@
   Netware-HOWTO
   Lauri Tischler ltischler@fipower.pp.fi
   rev.0.2 30 Mar 1995
-  updated for DOSEMU 1.2.0, 18 Jan 2004, Bart Oldeman -- contributions
-  by Peter Eckhardt
+  updated for DOSEMU 1.2.0, 28 Sep 2003, Bart Oldeman
 
   This document tryes to descibe how to connect to Novell Netware
   servers from Linux.
@@ -99,10 +98,7 @@
   3.  Making The Connection.
 
   There are basically two methods for making the connection between the
-  Linuxbox and Netware server, The Direct-IPX or Packet Drivers. At
-  the time of writing the Packet Driver method is the most reliable
-  in particular if you combine it with DPMI programs. Direct-IPX may
-  just work though (depending on the DOS program in question).
+  Linuxbox and Netware server, The Direct-IPX or Packet Drivers.
 
 
   3.1.	The Direct-IPX.
@@ -164,7 +160,8 @@
   shim, but masquerading as an ODI compliant driver.  There also exists
   an older driver PDIPX, technology represented by PDIPX is no longer
   supported by Novell. A driver named IPXPD is more likely to work
-  than PDIPX.
+  than PDIPX. PDETHER and IPXPD are using Ethernet_II frames, while
+  PDIPX uses 802.3 frames.
 
   The Packet Driver uses build-in packetdriver interface which means
   that the IPX-SUPPORT in Kernel and in DOSEMU is NOT needed.  When
@@ -192,16 +189,11 @@
   $_pktdriver = (on)
   # $_novell_hack = (off)
 
-  Also set up a working packet driver (eg. TUN/TAP) connection; refer to
-  README.txt for details. For example (with tunctl) set:
-
-  $_netdev="tap0"
-  $_vnet="tap"
-
-  There are various versions of packetdriver PDETHER floating around, at
-  least the one which is in
-  /tsx-11.mit.edu/pub/linux/ALPHA/dosemu/Development/pdether103.tgz
-  works.
+  There are various versions of the packetdriver PDETHER floating around, but
+  it is recommended to use version 1.05 or later. Those versions have
+  support for a "raw packet send" interface, which allows to use the
+  NDIS over the ODI shim with an odihlp.exe NDIS3/ODI mapper (the odinsup.com
+  protocol mapper won't work with any version of PDETHER).
 
   PDETHER in its native mode understands only Ethernet_II frames, by
   enabling the dosemu.conf parameter pktdriver novell_hack it can be
@@ -209,14 +201,14 @@
 
   Because PDETHER is an ODI driver, you load..
 
-      LSL (at least version 2.20; older versions may crash)
+      LSL (at least version 2.20; older versions may crash dosemu)
       PDETHER
       IPXODI
       NETX
 
   If you use IPXPD or PDIPX you just load
 
-      IPXPD or PDIPX
+      IPXPD (for Ethernet_II frames) or PDIPX (for 802.3 frames)
       NETX
 
   Because PDETHER is an ODI driver, there must be corresponding section
@@ -255,54 +247,6 @@
 
   Read the PDETHER.DOC for further info.
 
-  Example from Peter Eckhardt:
-
-   Create a startnet.bat and net.cfg in dosemu
-
-   CD C:\NWCLIENT
-   edit ....
-
-   - startnet.bat -
-
-   SET NWLANGUAGE=DEUTSCH
-   LH C:\NWCLIENT\LSL /c=C:\NWCLIENT\net.cfg
-   C:\NWCLIENT\PDETHER.EXE
-   LH C:\NWCLIENT\IPXODI.COM
-   rem LH C:\NWCLIENT\NETX
-   LH C:\NWCLIENT\VLM.EXE
-
-   - net.cfg -
-
-   Link Support
-          Buffers 4 1514
-          MemPool 2048
-
-   Link Driver PDETHER
-          Int 60
-          FRAME Ethernet_II
-          USE DEFAULTS=OFF
-          VLM=CONN.VLM
-          VLM=IPXNCP.VLM
-          VLM=TRAN.VLM
-          VLM=SECURITY.VLM
-          VLM=NDS.VLM
-          VLM=NWP.VLM
-          VLM=FIO.VLM
-          VLM=BIND.VLM
-          VLM=PRINT.VLM
-          VLM=GENERAL.VLM
-          VLM=REDIR.VLM
-          VLM=NETX.VLM
-
-   NetWare DOS Requester
-          FIRST NETWORK DRIVE   = F
-          NETWORK PROTOCOL      = BIND
-          SHOW DOTS             = ON
-          SET STATION TIME      = ON
-          PREFERRED SERVER      = EMK1
-          FILE HANDLES          = 40
-          LOCAL PRINTERS        = 1
-          VLM                   = AUTO.VLM
 
   4.  Speed Of Connection
 
@@ -320,11 +264,17 @@
   DosEmu (directIPX)	290
   DosEmu (pktdrv)	 120
 
-
   The figures denote transferspeed in kilobytes/second.
 
   Few months ago I had a NE2000 clone in my box, with DOS6.2/NETX it
   would run to appr. 460 kbs.  I could live with that.
+
+  Note: Recently improvements were made that speed up the packet
+  driver throughput more than twice. The above measurements are no longer
+  valid. It is expected that the Packet Driver now has the same performance
+  as the directIPX method, or even better, but no precise measurements
+  were made.
+
 
 
 
