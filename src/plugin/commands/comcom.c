@@ -1805,7 +1805,7 @@ static int cmd_dir(int argc, char **argv)
 		i = 1;
 		incmask = excmask = 0;
 		while ((c = *p++) != 0) {
-		    #define XXX(x) (i ? incmask : excmask) |= x; i = 1; break
+		    #define XXX(x) (*(i ? &incmask : &excmask)) |= x; i = 1; break
 		    switch (tolower(c)) {
 			case '-': i = 0; break;
 			case 'h': XXX(DOS_ATTR_HIDDEN);
@@ -3538,7 +3538,7 @@ int comcom_main(int argc, char **argv)
 	static int toplevel = 1;
 	int option_k = 0;
 
-	UDATAPTR = rdta;
+	CTCB->userdata = (unsigned long)rdta;
 	rdta->current_bdta = 0;
 	rdta->break_pending = 0;
 	rdta->fatal_handler_return_possible = 0;
