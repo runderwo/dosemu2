@@ -183,11 +183,17 @@ io_select(fd_set fds)
  */
 void 
 io_select_init(void) {
+sigset_t set;
 int i;
     FD_ZERO(&fds_sigio);	/* initialize both fd_sets to 0 */
     FD_ZERO(&fds_no_sigio);
     for (i = 0; i < MAX_FD; i++)
       io_callback_func[i] = NULL;
+    /* block SIGIO/SIGALRM/SIG_ACQUIRE/SIG_RELEASE until they are set to
+       functions later in signal_init() and device_init() */
+    sigemptyset(&set);
+    ADDSET_SIGNALS_THAT_QUEUE(&set);
+    sigprocmask(SIG_BLOCK, &set, NULL);
 }
 
 /*

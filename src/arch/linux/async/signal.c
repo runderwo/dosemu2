@@ -192,7 +192,7 @@ void
 signal_init(void)
 {
   struct sigaction sa;
-  sigset_t trashset;
+  sigset_t trashset, set;
 
   save_eflags_fs_gs();
 
@@ -284,6 +284,11 @@ signal_init(void)
   NEWSETQSIG(SIGIO, sigio);
   NEWSETSIG(SIGSEGV, dosemu_fault);
   SETSIG(SIGCHLD, cleanup_child);
+
+  /* unblock SIGIO, SIGALRM, SIG_ACQUIRE, SIG_RELEASE */
+  sigemptyset(&set);
+  ADDSET_SIGNALS_THAT_QUEUE(&set);
+  sigprocmask(SIG_UNBLOCK, &set, NULL);
 
   SIG_init();			/* silly int generator support */
 }

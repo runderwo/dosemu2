@@ -352,9 +352,9 @@ emulate(int argc, char **argv)
     cpu_setup();		/* setup the CPU */
     pcibios_init();
     pci_setup();
+    device_init();		/* initialize keyboard, disk, video, etc. */
     extra_port_init();		/* setup ports dependent on config */
     signal_init();              /* initialize sig's & sig handlers */
-    device_init();		/* initialize keyboard, disk, video, etc. */
     map_video_bios();           /* map the video bios */
     map_hardware_ram();         /* map the direct hardware ram */
     pkt_priv_init();
