@@ -1100,6 +1100,9 @@ mouse_bpressinfo(void)
 {
   m_printf("MOUSE: Button press info\n");
 
+  if (LWORD(ebx) > 2)
+    LWORD(ebx) = 0;
+
   switch(LWORD(ebx)) {
  
   case 0:				/* left button */
@@ -1117,12 +1120,10 @@ mouse_bpressinfo(void)
     break;
 
   case 2:				/* middle button */
-    if (mouse.threebuttons) {
-      LWORD(ebx) = mouse.mpcount;
-      mouse.mpcount = 0;
-      LWORD(ecx) = mouse.mpx;
-      LWORD(edx) = mouse.mpy;
-    }
+    LWORD(ebx) = mouse.mpcount;
+    mouse.mpcount = 0;
+    LWORD(ecx) = mouse.mpx;
+    LWORD(edx) = mouse.mpy;
     break;
   }
   
@@ -1135,6 +1136,9 @@ void
 mouse_brelinfo(void)
 {
   m_printf("MOUSE: Button release info\n");
+
+  if (LWORD(ebx) > 2)
+    LWORD(ebx) = 0;
 
   switch(LWORD(ebx)) {
  
@@ -1152,12 +1156,10 @@ mouse_brelinfo(void)
     LWORD(edx) = mouse.rry;
 
   case 2:				/* middle button */
-    if (mouse.threebuttons) {
-      LWORD(ebx) = mouse.mrcount;
-      mouse.mrcount = 0;
-      LWORD(ecx) = mouse.mrx;
-      LWORD(edx) = mouse.mry;
-    }
+    LWORD(ebx) = mouse.mrcount;
+    mouse.mrcount = 0;
+    LWORD(ecx) = mouse.mrx;
+    LWORD(edx) = mouse.mry;
     break;
   }
   
