@@ -306,22 +306,22 @@ static struct tcb *create_thread(thread_function_type *thread_code,
 }
 
 
-static int delete_thread(struct tcb *tcb, struct tcb *successor)
+static int delete_thread(volatile struct tcb *tcb, volatile struct tcb *successor)
 {
-	if (!tcb) (volatile struct tcb *)tcb = owntcb;
-	if (!successor) (volatile struct tcb *)successor = owntcb;
+	if (!tcb) tcb = owntcb;
+	if (!successor) successor = owntcb;
 	if (tcb == successor) return 0;
 	free_stack_page(tcb->stack, tcb->stack_size);
-	free(tcb);
+	free((void *)tcb);
 	if (owntcb == successor) return 1;
 	if (owntcb == tcb) {
 		/* we deleted ourself, switching to other thread */
 		owntcb = successor;
-		longjmp(successor->context, 1);
+		longjmp((void *)(successor->context), 1);
 		/* doesn't return here */
 	}
 	/* deleted and successor threads both are not owntcb */
-	switch_to(successor);
+	switch_to((struct tcb *)successor);
 	return 1;
 }
 
