@@ -442,11 +442,10 @@ static int direct_dpmi_switch(struct sigcontext_struct *dpmi_context)
 "      popa\n"
 "      popfl\n"
 "      lss    (%%esp),%%esp\n"		/* this is: pop ss; pop esp */
-"      jmp    __dpmi_switch_jmp\n"
+"      ljmp   *%%cs:__dpmi_switch_jmp\n"
 
 "      .data\n"
 "  __dpmi_switch_jmp:\n"
-"      .byte  0xEA\n"			/* ljmp */
 "  __neweip:\n"
 "      .long  0x12345678\n"
 "  __newcs:\n"
@@ -2804,15 +2803,6 @@ static void do_cpu_exception(struct sigcontext_struct *scp)
     { D_printf(DPMI_show_state(scp)); }
 #ifdef SHOWREGS
   print_ldt();
-#endif
-  if ((_trapno == 0xe)
-#ifdef X86_EMULATOR
-	&& (config.cpuemu==0)
-#endif
-     )
-    leavedos(98);
-#ifdef DPMI_DEBUG
-  set_debug_level('M', dd);
 #endif
   
   if (DPMI_CLIENT.Exception_Table[_trapno].selector == DPMI_CLIENT.DPMI_SEL) {
