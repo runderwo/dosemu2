@@ -600,8 +600,7 @@ dosemu's hardware emulation to work properly though ...
 You will <emphasis>need</emphasis> to edit <filename>dosemu.users</filename> (see
 <filename>dosemu.users.example</filename>) for any suid-root/sudo
 access beyond console graphics or run dosemu as root for hardware
-access. If you use <command>sudo</command> as replacement for 
-<command>su -c</command> then try <command>sudo sudo dosemu</command>.
+access.
 </para>
 
 </sect2>

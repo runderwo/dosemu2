@@ -402,7 +402,7 @@ static int option_delete(int option, int *argc, char **argv)
 void secure_option_preparse(int *argc, char **argv)
 {
   char *opt;
-  int runningsuid = get_orig_uid() != get_orig_euid();
+  int runningsuid = can_do_root_stuff && !under_root_login;
 
   static char * get_option(char *key, int with_arg)
   {

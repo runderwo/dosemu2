@@ -428,8 +428,7 @@ Updated by David Hodges, davidhodges@altavista.iname.com
 
    You will need to edit dosemu.users (see dosemu.users.example) for any
    suid-root/sudo access beyond console graphics or run dosemu as root
-   for hardware access. If you use sudo as replacement for su -c then try
-   sudo sudo dosemu.
+   for hardware access.
      _________________________________________________________________
 
 2.8. How do I patch dosemu?
