@@ -52,7 +52,6 @@ typedef struct  {
   int fd;
   int type;
   int flags;
-  boolean async_io;
   boolean intdrv;
   boolean use_absolute; /* use absolute mouse addressing */
   boolean emulate3buttons;
