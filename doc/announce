@@ -64,8 +64,9 @@ WHAT IS NEW against version 1.0.2.1?
 - Added large file support for file locking.
 - Security:
   * DPMI in suid-root DOSEMU is no longer inherently insecure; DOSEMU
-    now drops its root priviliges after initializing with the exception
-    of a forked off "I/O port server" (if necessary)
+    now drops its root priviliges after initializing; a forked off
+    "I/O port server" (if necessary) allows access to the specified
+    I/O ports where the main DOSEMU is not capable.
   * DOSEMU can be run via sudo in the same way as suid-root (it will 
     revert to the identity of the original user) -- therefore it is
     no longer necessary to install two seperate DOSEMUs (one suid-root
