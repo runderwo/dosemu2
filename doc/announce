@@ -35,7 +35,7 @@ worth noting:
   - can even directly boot from a Linux directory containing all DOS files.
   - Sound support (including sound DMA and Midi)
   - NetWare and other network connectivity via builtin IPX and pktdrvr
-     support.
+    support.
   - dosemu-freedos packaged binary distribution installs directly via a
     normal user's $HOME and runs 'out-of-the-box' without any further
     configuration (no root rights needed).
