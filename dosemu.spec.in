@@ -1,0 +1,60 @@
+%define name dosemu
+%define version @PACKAGE_VERSION@
+%define release 1
+
+Summary: DOSEMU stands for DOS Emulation, and enables Linux to run DOS programs
+Name: %{name}
+Version: %{version}
+Release: %{release}
+Source: %{name}-%{version}.tgz
+Source1: %{name}-freedos-bin.tgz
+License: GPL
+Group: System/Emulators
+Buildroot: %{_builddir}/%{name}-root
+%description
+DOSEMU is a user-level program which uses certain special features
+of the Linux kernel and the 80386 processor to run MS-DOS/FreeDOS/
+DR-DOS, DOS programs, and many DPMI applications in what we in the
+biz call a `DOS box'.
+%prep
+rm -rf $RPM_BUILD_ROOT
+%setup -q
+%build
+ln -s %{_sourcedir}/dosemu-freedos-bin.tgz dosemu-freedos-bin.tgz
+./default-configure --prefix=%{_prefix} --mandir=%{_mandir} --with-slangdir=.
+make
+%install
+mkdir -p $RPM_BUILD_ROOT%{_bindir}
+make mandir=$RPM_BUILD_ROOT%{_mandir} prefix=$RPM_BUILD_ROOT%{_prefix} sysconfdir=$RPM_BUILD_ROOT%{_sysconfdir}/dosemu install
+%files
+%defattr(-,root,root)
+%{_bindir}/dosemu.bin
+%{_bindir}/dosemu
+%{_bindir}/mkfatimage
+%{_bindir}/mkfatimage16
+%{_bindir}/midid
+%{_bindir}/dosdebug
+%{_bindir}/xdosemu
+%{_mandir}/man1/mkfatimage16.1*
+%{_mandir}/man1/dosdebug.1*
+%{_mandir}/man1/dosemu.1*
+%{_mandir}/man1/dosemu.bin.1*
+%{_mandir}/man1/xdosemu.1*
+%{_mandir}/ru/man1/mkfatimage16.1*
+%{_mandir}/ru/man1/dosdebug.1*
+%{_mandir}/ru/man1/dosemu.1*
+%{_mandir}/ru/man1/dosemu.bin.1*
+%{_mandir}/ru/man1/xdosemu.1*
+%{_datadir}/dosemu/freedos
+%{_datadir}/dosemu/dosemu-bin.tgz
+%{_datadir}/dosemu/keymap
+%{_datadir}/dosemu/Xfonts
+%doc %{_datadir}/doc/dosemu/README.bindist
+%doc %{_datadir}/doc/dosemu/README.txt
+%doc %{_datadir}/doc/dosemu/README-tech.txt
+%doc %{_datadir}/doc/dosemu/dosemu-HOWTO.txt
+%doc %{_datadir}/doc/dosemu/sound-usage.txt
+%doc %{_datadir}/doc/dosemu/announce
+%config %{_sysconfdir}/dosemu/dosemu.conf
+%{_sysconfdir}/dosemu/dosemu.users.example
+%{_sysconfdir}/dosemu/global.conf.example

@@ -8748,7 +8748,7 @@ CPPFLAGS="${CPPFLAGS} -MMD \${INCDIR}"
 
 
 
-          ac_config_files="$ac_config_files Makefile.conf"
+                    ac_config_files="$ac_config_files Makefile.conf dosemu.spec"
 
 
           ac_config_commands="$ac_config_commands Makefile"
@@ -9380,6 +9380,7 @@ do
   case "$ac_config_target" in
   # Handling of arguments.
   "Makefile.conf" ) CONFIG_FILES="$CONFIG_FILES Makefile.conf" ;;
+  "dosemu.spec" ) CONFIG_FILES="$CONFIG_FILES dosemu.spec" ;;
   "Makefile" ) CONFIG_COMMANDS="$CONFIG_COMMANDS Makefile" ;;
   "src/include/config.h" ) CONFIG_HEADERS="$CONFIG_HEADERS src/include/config.h" ;;
   *) { { echo "$as_me:$LINENO: error: invalid argument: $ac_config_target" >&5
