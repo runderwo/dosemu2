@@ -173,6 +173,26 @@ sgleave:
  		 leavedos(4);
     }
   }
+#define VGA_ACCESS_HACK 1
+#if VGA_ACCESS_HACK
+#if X_GRAPHICS
+  if(_trapno==0x0e && config.X && _cs==UCODESEL) {
+/* Well, there are currently some dosemu functions that touches video memory
+ * without checking the permissions. This is a VERY BIG BUG.
+ * Must be fixed ASAP.
+ * Known offensive functions are:
+ * dosemu/utilities.c:     char_out(*s++, READ_BYTE(BIOS_CURRENT_SCREEN_PAGE));
+ * video/int10.c:    char_out(*(char *) &REG(eax), READ_BYTE(BIOS_CURRENT_SCREEN_PAGE));
+ * EMS and XMS memory transfer functions may also touch video mem.
+ *  but if only the protection needs to be adjusted (no instructions emulated)
+ *  we should be able to handle it in DOSEMU 
+ */
+    v_printf("BUG: dosemu touched protected video mem, but trying to recover\n");
+    if(VGA_EMU_FAULT(scp,code,1)==True)
+      return;
+  }
+#endif
+#endif
 
   if (in_dpmi) {
     /* At first let's find out where we came from */
@@ -228,31 +248,6 @@ sgleave:
 
 bad:
 /* All recovery attempts failed, going to die :( */
-
-#if X_GRAPHICS
-/* Well, there are currently some dosemu functions that touches video memory
- * without checking the permissions. This is a VERY BIG BUG.
- * Must be fixed ASAP.
- * Known offensive functions are:
- * dosemu/utilities.c:     char_out(*s++, READ_BYTE(BIOS_CURRENT_SCREEN_PAGE));
- * video/int10.c:    char_out(*(char *) &REG(eax), READ_BYTE(BIOS_CURRENT_SCREEN_PAGE));
- * EMS and XMS memory transfer functions may also touch video mem.
- *  but if only the protection needs to be adjusted (no instructions emulated)
- *  we should be able to handle it in DOSEMU 
- */
-  if(_trapno==0x0e && config.X) {
-    for(i = 0; i < VGAEMU_MAX_MAPPINGS; i++) {
-      if ((_cr2 >> PAGE_SHIFT) >= vga.mem.map[i].base_page &&
-	  (_cr2 >> PAGE_SHIFT) < vga.mem.map[i].base_page + vga.mem.map[i].pages) {
-        /* Is this check correct??? */
-	if (vga.inst_emu)
-	  error("BUG: dosemu touched the protected video memory!!!\n");
-	else if(VGA_EMU_FAULT(scp,code,1)==True)
-          return;
-      }
-    }
-  }
-#endif /* X_GRAPHICS */
 
 #if 0
   csp = (char *) _eip;
@@ -330,22 +325,6 @@ void dosemu_fault(int signal, struct sigcontext_struct context)
   restore_eflags_fs_gs();
   fault_cnt++;
 
-  if (fault_cnt > 4) {
-   /*
-    * OK, we can't exit. Lets deadlock rather than hang the entire system.
-    * But if we are here, then the system is already trashed most likely.
-    */
-    while(1) sleep(100);
-  }    
-  if (fault_cnt > 3) {
-   /* 
-    * At this point we already tried _exit(2). So we have nothing to do
-    * but kill ourselves. We shouldn't print any messages here - otherwise
-    * we can recurse. Neither can we use raise(3), as glibc may be
-    * in an unreliable state if we are here.
-    */
-    kill(getpid(), SIGKILL);
-  }
   if (fault_cnt > 2) {
    /*
     * At this point we already tried leavedos(). Now try _exit()
