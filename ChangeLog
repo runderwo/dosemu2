@@ -1,3 +1,7 @@
+2004/01/18 ver 1.2.0 released
+	From Bart
+	- mknewyear and adapt various other dates
+	- misc doc adjustments (README.txt, Novell-HOWTO)
 2004/01/14 ver 1.2.0rc2 stable pre-release (aka 1.1.99.2)
 	From Stas:
 	- src/base/serial/: ser_defs.h, ser_init.c, ser_irq.c, ser_ports.c:
