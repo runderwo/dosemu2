@@ -1955,6 +1955,12 @@ void parent_close_mouse (void)
 {
   if (mice->intdrv)
      {
+        if (mice->type == MOUSE_XTERM || mice->type == MOUSE_X
+#ifdef USE_GPM
+	    || mice->type == MOUSE_GPM
+#endif
+	    ) return;
+    
 	if (mice->fd > 0) {
    	   remove_from_io_select(mice->fd, 1);
            DOS_SYSCALL(close (mice->fd));
@@ -1969,9 +1975,16 @@ int parent_open_mouse (void)
   if (mice->intdrv)
     {
       struct stat buf;
-      int mode = O_RDWR | O_NONBLOCK;
-  
+      int mode;
+
+      if (mice->type == MOUSE_XTERM || mice->type == MOUSE_X
+#ifdef USE_GPM
+	  || mice->type == MOUSE_GPM
+#endif
+	  ) return 1;
+
       stat(mice->dev, &buf);
+      mode = O_RDWR | O_NONBLOCK;
       if (S_ISFIFO(buf.st_mode) || mice->type == MOUSE_BUSMOUSE || mice->type == MOUSE_PS2) {
 	/* no write permission is necessary for FIFO's (eg., gpm) */
         mode = O_RDONLY | O_NONBLOCK;
