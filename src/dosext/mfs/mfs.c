@@ -47,6 +47,9 @@
  *
  * HISTORY:
  * $Log$
+ * Revision 1.2.2.4  2004/03/04 00:23:28  bartoldeman
+ * Apply SIGALRM/MFS fixes to the stable code.
+ *
  * Revision 1.2.2.3  2004/02/11 00:17:15  bartoldeman
  * Backported Clarence' "unix -c" support for directly executing DOS
  * programs from Linux without fiddling with LFN/VFAT/filenamei8n yet.
@@ -794,9 +797,9 @@ mfs_redirector(void)
 {
   int ret;
 
-  sigalarm_onoff(0);
+  sigalarm_block(1);
   ret = dos_fs_redirect(&REGS);
-  sigalarm_onoff(1);
+  sigalarm_block(0);
 
   Debug0((dbg_fd, "Finished dos_fs_redirect\n"));
 
@@ -823,9 +826,9 @@ mfs_inte6(void)
 {
   boolean_t result;
 
-  sigalarm_onoff(0);
+  sigalarm_block(1);
   result = dos_fs_dev(&REGS);
-  sigalarm_onoff(1);
+  sigalarm_block(0);
   return (result);
 }
 
@@ -1067,10 +1070,17 @@ static struct dir_list *get_dir(char *name, char *mname, char *mext)
     while ((cur_ent = dos_readdir(cur_dir))) {
       char tmpname[100];
       int namlen;
+      sigset_t mask;
 
       /* this while loop can take a _long_ time ... better avoid signal queue
        *overflows AV
        */
+      sigpending(&mask);
+      if (sigismember(&mask, SIGALRM)) {
+	sigalarm_block(0);
+	/* the pending sigalrm must be delivered now */
+	sigalarm_block(1);
+      }
       handle_signals();
 
       Debug0((dbg_fd, "get_dir(): `%s' (%d)\n", cur_ent->d_name,
