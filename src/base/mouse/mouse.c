@@ -1852,7 +1852,7 @@ dosemu_mouse_init(void)
   	mouse.threebuttons = FALSE;
 
 #ifdef X_SUPPORT
-  if (config.X)
+  if (config.X) {
     if (mice->intdrv) {
       mice->fd = -1;
       mice->type = MOUSE_X;
