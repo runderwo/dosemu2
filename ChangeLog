@@ -1,3 +1,55 @@
+2004/06/30 ver 1.2.1.2 unofficial pre-release
+	From Stas
+	- Refer to our documentation for the CPU esp bug.
+	- Fix timid.c compilation warning for some setups
+	- Fix transmit IRQ triggering code of ser_ports.c. Closes bug
+	  #944346.
+	- Move _emu_stack_frame to emu.h - it must be globally available.
+	- Restore fs/gs in console sighandlers - this way dosemu can
+	  survive the console switch on NPTL-enabled systems.
+	- Set NO_VC_NO_DEBUG to 0 - it only eats debug info.
+	- Add more debug info for crashes
+	From Dave Coffin <dcoffin@cybercom.net>
+	- Fix incorrect bitshifts in instremu.c (fixes some visual defects
+	  in old Scrabble game)
+	From Reinhard and Michael Karcher
+	- Fix port output problem with s3.c
+	From ZUB@atlas.cz
+	- add cp895 (Czech/Slovak) codepage support
+	From Ivo Tachev <ivotachev@mail.bg>
+	- add bg-mik codepage support
+	From Ryan Underwood
+	- fix Hercules graphics card port range in vgaemu.c
+	From Bart
+	- Use syscall() for modify_ldt. Fixes compilation problem with
+	  FC2.
+	- Ignore empty "drives" directories for $_hdimage="drives/*".
+	- reset the "idle" counter for int21 functions that output.
+	- Legacy code fixes for coopthreads and prestroke.
+	- Backport filename Unicode translations from devel version.
+	- Avoid fixed sized buffer and strcpy/strcat in exists()
+	- Change stop_mouse c_printf to be a little more legible.
+	- Use a milder test to check for kernels 2.6 < 2.6.6
+	- VGAEMU changes:
+	  * Backport bitmap font support from devel version.
+	  * use vga.seq.addr_mode == 2 instead of the number of planes
+	    to check for chain4 modes of planes ("mode-X"). This fixes the
+	    Windows logo display in MSDOS 7.x (bug #962683)
+	  * The int10 BIOS now determines whether a mode is text or
+	    graphics from the byte at 40:49.
+	  * Removed line_compare==0 workaround, since the CRTC init now
+	    initializes it correctly from the CRTC registers.
+	    This fixes some display problems with the game bananoid.
+	  * Fix most display problems with zx_emul except for some
+	    annoying vertical bars (decouple scan_len from co, zx_emul
+	    uses co=40 with scan_len=48, some bitmap font issues)
+	  * Text modes in X now update from the aliased memory (high
+	    up in the Linux address space), instead of 0xa0000-0xc0000;
+	    sometimes we use instremu when text modes are used in the
+	    background (eg. when the Windows logo is displayed).
+	  * Implement CRTC readonly flag (thanks to DosBox source code)
+	    Fixes the myth bug --only 72 out of 200 lines were displayed
+	    (#930572)
 2004/05/19 ver 1.2.1.1 unofficial pre-release
 	From Stas
 	- Don't allow client stack to run above the dosemu stack in an
