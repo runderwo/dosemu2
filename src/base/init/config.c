@@ -1089,7 +1089,7 @@ usage(char *basename)
 	"    -K no effect, left for compatibility\n"
 	"    -k use PC console keyboard (!)\n"
 	"    -M set memory size to SIZE kilobytes (!)\n"
-	"    -m enable mouse support (!#)\n"
+	"    -m toggle internal mouse driver\n"
 	"    -N No boot of DOS\n"
 	"    -O write debug messages to stderr\n"
 	"    -o FILE put debug messages in file\n"
