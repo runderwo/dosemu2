@@ -886,6 +886,7 @@ void X_init_videomode(void)
   }
   /* start with some standard text mode */
   X_set_videomode(TEXT, co, li);
+  mouse_reset_to_current_video_mode();
 }
 
 /*

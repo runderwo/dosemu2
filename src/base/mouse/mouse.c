@@ -88,7 +88,6 @@ void mouse_cursor(int), mouse_pos(void), mouse_setpos(void),
 /* mouse movement functions */
 static void mouse_reset(int);
 static void mouse_do_cur(void), mouse_update_cursor(void);
-static void mouse_reset_to_current_video_mode(void);
 
 /* graphics cursor */
 void graph_cursor(void), text_cursor(void);
