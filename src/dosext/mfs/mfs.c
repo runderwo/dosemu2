@@ -47,6 +47,12 @@
  *
  * HISTORY:
  * $Log$
+ * Revision 1.2.2.3  2004/02/11 00:17:15  bartoldeman
+ * Backported Clarence' "unix -c" support for directly executing DOS
+ * programs from Linux without fiddling with LFN/VFAT/filenamei8n yet.
+ * Not sure how to combine this with "-E" though... Ideas welcome.
+ * Also backporting those joystick comments didn't hurt either.
+ *
  * Revision 1.2.2.2  2004/01/16 21:48:25  bartoldeman
  * Happy new year!
  *
@@ -266,18 +272,6 @@ boolean_t mach_fs_enabled = FALSE;
 #define SFT_FDEVICE 0x0080
 #define SFT_FEOF 0x0040
 
-/* #define MAX_PATH_LENGTH 57 */
-/* 2001/01/05 Manfred Scherer
- * With the value 57 I can create pathlength until 54.
- * In native DOS I can create pathlength until 63.
- * With the value 66 it should be possible to create
- * paths with length 63.
- * I've tested it on my own system, and I found the value 66
- * is right for me.
- */
-
-#define MAX_PATH_LENGTH 66
-
 struct file_fd
 {
   char *name;
@@ -286,6 +280,7 @@ struct file_fd
 
 /* Need to know how many drives are redirected */
 static u_char redirected_drives = 0;
+struct drive_info drives[MAX_DRIVE];
 
 static int calculate_drive_pointers(int);
 static boolean_t dos_fs_dev(state_t *);
@@ -296,9 +291,6 @@ static int build_ufs_path(char *ufs, const char *path);
 static int is_long_path(const char *s);
 
 static boolean_t drives_initialized = FALSE;
-static char *dos_roots[MAX_DRIVE];
-static int dos_root_lens[MAX_DRIVE];
-static boolean_t read_onlys[MAX_DRIVE];
 static boolean_t finds_in_progress[MAX_DRIVE];
 static struct file_fd open_files[256];
 static boolean_t find_in_progress = FALSE;
@@ -486,7 +478,7 @@ select_drive(state_t *state)
 	where the cds flags seem to be unset. This allows me to reclaim a
  	drive in the strange and unnatural case where the cds has moved. */
   for (dd = 0; dd < num_drives; dd++)
-    if (dos_roots[dd] && (cds_flags(drive_cds(dd)) &
+    if (drives[dd].root && (cds_flags(drive_cds(dd)) &
 			  (CDS_FLAG_REMOTE | CDS_FLAG_READY)) !=
 	(CDS_FLAG_REMOTE | CDS_FLAG_READY)) {
       calculate_drive_pointers(dd);
@@ -497,13 +489,13 @@ select_drive(state_t *state)
 
   if (!found && check_cds) {
     dd = cds_drive(sda_cds);
-    if (dd >= 0 && dos_roots[dd])
+    if (dd >= 0 && drives[dd].root)
       found = 1;
   }
 
   if (!found && check_esdi_cds) {
     dd = cds_drive(esdi_cds);
-    if (dd >= 0 && dos_roots[dd])
+    if (dd >= 0 && drives[dd].root)
       found = 1;
   }
 
@@ -516,7 +508,7 @@ select_drive(state_t *state)
           a non-zero value in the second four bits of the entry.
 	  2002/01/08: apparently PTSDOS doesn't like bit 9 though...
 	*/
-    if (dd >= 0 && dd < MAX_DRIVE && dos_roots[dd]) {
+    if (dd >= 0 && dd < MAX_DRIVE && drives[dd].root) {
       found = 1;
     }
   }
@@ -525,7 +517,7 @@ select_drive(state_t *state)
     char *fn1 = sda_filename1(sda);
 
     dd = toupperDOS(fn1[0]) - 'A';
-    if (dd >= 0 && dd < MAX_DRIVE && dos_roots[dd]) {
+    if (dd >= 0 && dd < MAX_DRIVE && drives[dd].root) {
       /* removed ':' check so DRDOS would be happy,
 	     there is a slight worry about possible device name
 	     troubles with this - will PRN ever be interpreted as P:\RN ? */
@@ -541,7 +533,7 @@ select_drive(state_t *state)
     } else {
       dd = sda_cur_drive(sda);
     }
-    if (dd >= 0 && dd < MAX_DRIVE && dos_roots[dd])
+    if (dd >= 0 && dd < MAX_DRIVE && drives[dd].root)
       found = 1;
   }
 
@@ -550,7 +542,7 @@ select_drive(state_t *state)
   if (!found && fn == FIND_NEXT) {
     u_char *dta = sda_current_dta(sda);
     dd = (*dta & ~0x80);
-    if (dd >= 0 && dd < MAX_DRIVE && dos_roots[dd])
+    if (dd >= 0 && dd < MAX_DRIVE && drives[dd].root)
       found = 1;
   }
 
@@ -567,9 +559,9 @@ select_drive(state_t *state)
   current_drive = dd;
   cds = drive_cds(current_drive);
   find_in_progress = finds_in_progress[current_drive];
-  dos_root = dos_roots[current_drive];
-  dos_root_len = dos_root_lens[current_drive];
-  read_only = read_onlys[current_drive];
+  dos_root = drives[current_drive].root;
+  dos_root_len = drives[current_drive].root_len;
+  read_only = drives[current_drive].read_only;
 
   Debug0((dbg_fd, "selected drive %d: %s\n", current_drive, dos_root));
   return (1);
@@ -645,10 +637,10 @@ init_all_drives(void)
     Debug0((dbg_fd, "Inside initialization\n"));
     drives_initialized = TRUE;
     for (dd = 0; dd < MAX_DRIVE; dd++) {
-      dos_roots[dd] = NULL;
-      dos_root_lens[dd] = 0;
+      drives[dd].root = NULL;
+      drives[dd].root_len = 0;
       finds_in_progress[dd] = FALSE;
-      read_onlys[dd] = FALSE;
+      drives[dd].read_only = FALSE;
     }
     process_mask = umask(0);
     umask(process_mask);
@@ -758,32 +750,32 @@ init_drive(int dd, char *path, char *options)
   }
   get_unix_path(new_path, path);
   Debug0((dbg_fd, "new_path=%s\n", new_path));
-  dos_roots[dd] = new_path;
-  dos_root_lens[dd] = strlen(dos_roots[dd]);
+  drives[dd].root = new_path;
+  drives[dd].root_len = strlen(drives[dd].root);
   Debug0((dbg_fd, "next_aval %d path %s opts %s root %s length %d\n",
-	  dd, path, options, dos_roots[dd], dos_root_lens[dd]));
+	  dd, path, options, drives[dd].root, drives[dd].root_len));
 
   /* now a kludge to find the true name of the path */
-  if (dos_root_lens[dd] != 1) {
-    dos_roots[dd][dos_root_lens[dd] - 1] = 0;
+  if (drives[dd].root_len != 1) {
+    drives[dd].root[drives[dd].root_len - 1] = 0;
     dos_root_len = 1;
     dos_root = "/";
-    if (!find_file(dos_roots[dd], &st)) {
-      error("MFS: couldn't find root path %s\n", dos_roots[dd]);
+    if (!find_file(drives[dd].root, &st)) {
+      error("MFS: couldn't find root path %s\n", drives[dd].root);
       return (0);
     }
     if (!(st.st_mode & S_IFDIR)) {
-      error("MFS: root path is not a directory %s\n", dos_roots[dd]);
+      error("MFS: root path is not a directory %s\n", drives[dd].root);
       return (0);
     }
-    dos_roots[dd][dos_root_lens[dd] - 1] = '/';
+    drives[dd].root[drives[dd].root_len - 1] = '/';
   }
 
   if (num_drives <= dd)
     num_drives = dd + 1;
-  read_onlys[dd] = (options && (toupperDOS(options[0]) == 'R'));
-  Debug0((dbg_fd, "initialised drive %d as %s with access of %s\n", dd, dos_roots[dd],
-	  read_onlys[dd] ? "READ_ONLY" : "READ_WRITE"));
+  drives[dd].read_only = (options && (toupperDOS(options[0]) == 'R'));
+  Debug0((dbg_fd, "initialised drive %d as %s with access of %s\n", dd, drives[dd].root,
+	  drives[dd].read_only ? "READ_ONLY" : "READ_WRITE"));
 #if 0  
   calculate_drive_pointers (dd);
 #endif
@@ -1446,7 +1438,7 @@ calculate_drive_pointers(int dd)
 
   if (!lol)
     return (0);
-  if (!dos_roots[dd])
+  if (!drives[dd].root)
     return (0);
 
   cdsfarptr = lol_cdsfarptr(lol);
@@ -1568,7 +1560,7 @@ dos_fs_dev(state_t *state)
 
       if (strncmpDOS(dirnameptr - 10, "directory ", 10) == 0) {
 	*dirnameptr = 0;
-	strncpy(dirnameptr, dos_roots[drive_to_redirect], 128);
+	strncpy(dirnameptr, drives[drive_to_redirect].root, 128);
 	strcat(dirnameptr, "\n\r$");
       }
       else
@@ -1668,7 +1660,7 @@ static int build_ufs_path(char *ufs, const char *path)
 
   Debug0((dbg_fd, "dos_fs: build_ufs_path for DOS path '%s'\n", path));
 
-  /* Set ufs to dos_roots[current_drive] */
+  /* Set ufs to drives[current_drive].root */
   strcpy(ufs, dos_root);
   /* Skip over leading <drive>:\ in the path */
   if (path[1]==':')
@@ -2270,17 +2262,17 @@ GetRedirection(state_t *state, u_short index)
   /* I'm going to cheat and return a read-only flag in it */
   Debug0((dbg_fd, "GetRedirection, index=%d\n", index));
   for (dd = 0; dd < num_drives; dd++) {
-    if (dos_roots[dd]) {
+    if (drives[dd].root) {
       if (index == 0) {
 	/* return information for this drive */
-	Debug0((dbg_fd, "redirection root =%s\n", dos_roots[dd]));
+	Debug0((dbg_fd, "redirection root =%s\n", drives[dd].root));
 	deviceName = (u_char *) Addr(state, ds, esi);
 	deviceName[0] = 'A' + dd;
 	deviceName[1] = ':';
 	deviceName[2] = EOS;
 	resourceName = (u_char *) Addr(state, es, edi);
 	strcpy(resourceName, LINUX_RESOURCE);
-	strcat(resourceName, dos_roots[dd]);
+	strcat(resourceName, drives[dd].root);
 	path_to_dos(resourceName);
 	Debug0((dbg_fd, "resource name =%s\n", resourceName));
 	Debug0((dbg_fd, "device name =%s\n", deviceName));
@@ -2292,7 +2284,7 @@ GetRedirection(state_t *state, u_short index)
 
 	/* set the high bit of the return CL so that */
 	/* NetWare shell doesn't get confused */
-	returnCX = read_onlys[dd] | 0x80;
+	returnCX = drives[dd].read_only | 0x80;
 
 	Debug0((dbg_fd, "GetRedirection "
 		"user stack=%p, CX=%x\n",
@@ -2332,12 +2324,12 @@ GetRedirection(state_t *state, u_short index)
 int
 GetRedirectionRoot(int dsk, char **resourceName,int *ro_flag)
 {
-  if (!dos_roots[dsk]) return (TRUE);
+  if (!drives[dsk].root) return 1;
   *resourceName = malloc(MAXPATHLEN + 1);
-  if (*resourceName == NULL) return (TRUE);
-  strcpy(*resourceName, dos_roots[dsk] );
-  *ro_flag=read_onlys[dsk];
-  return (FALSE);
+  if (*resourceName == NULL) return 1;
+  strcpy(*resourceName, drives[dsk].root );
+  *ro_flag=drives[dsk].read_only;
+  return 0;
 
 }
 
@@ -2507,14 +2499,14 @@ CancelDiskRedirection(int dsk)
   cds = drive_cds(current_drive);
 
   /* Do we own this drive? */
-  if(dos_roots[current_drive] == NULL) return 2;
+  if(drives[current_drive].root == NULL) return 2;
 
   /* first, clean up my information */
-  free(dos_roots[current_drive]);
-  dos_roots[current_drive] = NULL;
-  dos_root_lens[current_drive] = 0;
+  free(drives[current_drive].root);
+  drives[current_drive].root = NULL;
+  drives[current_drive].root_len = 0;
   finds_in_progress[current_drive] = FALSE;
-  read_onlys[current_drive] = FALSE;
+  drives[current_drive].read_only = FALSE;
 
   /* reset information in the CDS for this drive */
   cds_flags(cds) = 0;		/* default to a "not ready" drive */
@@ -2568,17 +2560,17 @@ CancelRedirection(state_t * state)
     return (FALSE);
   }
   cds = drive_cds(current_drive);
-  if (dos_roots[current_drive] == NULL) {
+  if (drives[current_drive].root == NULL) {
     /* we don't own this drive, pass it through to next redirector */
     return (REDIRECT);
   }
 
   /* first, clean up my information */
-  free(dos_roots[current_drive]);
-  dos_roots[current_drive] = NULL;
-  dos_root_lens[current_drive] = 0;
+  free(drives[current_drive].root);
+  drives[current_drive].root = NULL;
+  drives[current_drive].root_len = 0;
   finds_in_progress[current_drive] = FALSE;
-  read_onlys[current_drive] = FALSE;
+  drives[current_drive].read_only = FALSE;
 
   /* reset information in the CDS for this drive */
   cds_flags(cds) = 0;		/* default to a "not ready" drive */
@@ -3709,7 +3701,7 @@ dos_fs_redirect(state_t *state)
       {
         char *label, *root, *p;
 
-        p = dos_roots[current_drive];
+        p = drives[current_drive].root;
         label = (char *) malloc(8 + 3 + 1);
         root = strdup(p);
         if (root[strlen(root) - 1] == '/' && strlen(root) > 1)

@@ -289,6 +289,14 @@ typedef struct lol_record {
 
 #endif
 
+struct drive_info 
+{
+  char *root;
+  int root_len;
+  boolean_t read_only;
+};
+extern struct drive_info drives[MAX_DRIVE];
+
 /* dos attribute byte flags */
 #define REGULAR_FILE 	0x00
 #define READ_ONLY_FILE	0x01
@@ -322,3 +330,17 @@ typedef struct lol_record {
 #define REDIRECT_DEVICE 3
 #define CANCEL_REDIRECTION 4
 #define EXTENDED_GET_REDIRECTION 5
+
+
+/* #define MAX_PATH_LENGTH 57 */
+/* 2001/01/05 Manfred Scherer
+ * With the value 57 I can create pathlength until 54.
+ * In native DOS I can create pathlength until 63.
+ * With the value 66 it should be possible to create
+ * paths with length 63.
+ * I've tested it on my own system, and I found the value 66
+ * is right for me.
+ */
+
+#define MAX_PATH_LENGTH 66
+

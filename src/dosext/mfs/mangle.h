@@ -66,6 +66,8 @@ extern BOOL do_fwd_mangled_map(char *s, char *MangledMap);
 extern BOOL name_convert(char *OutName,char *InName,BOOL mangle, char *MangledMap);
 extern BOOL is_mangled(char *s);
 extern BOOL check_mangled_stack(char *s, char *MangledMap);
+extern void make_unmake_dos_mangled_path(char *dest, char *fpath,
+                                         int current_drive, int alias);
 
 /* prototypes, found in util.c */
 BOOL isupperDOS(int c);

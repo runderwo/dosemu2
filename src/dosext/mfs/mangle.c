@@ -129,6 +129,45 @@ unsigned long is_dos_device(const char *fname)
   } while (1);
 }
 
+/* input: fpath = unix path
+          current_drive = drive for DOS path
+          alias=1: mangle, alias=0: don't mangle
+   output: dest = DOS path
+*/
+void make_unmake_dos_mangled_path(char *dest, char *fpath,
+					 int current_drive, int alias)
+{
+	char *src;
+	*dest++ = current_drive + 'A';
+	*dest++ = ':';
+	*dest = '\\';
+	src = fpath + strlen(drives[current_drive].root);
+	if (*src == '/') src++;
+	while (src != NULL && *src != '\0') {
+		char *src2 = strchr(src, '/');
+		if (src2 == src) break;
+		if (src - 1 > fpath)
+			src[-1] = '\0';
+		if (src2 != NULL)
+			*src2++ = '\0';
+		dest++;
+		d_printf("LFN: src=%s len=%d\n", src, strlen(src));
+		if (!strcmp(src, "..") || !strcmp(src, ".")) {
+			strcpy(dest, src);
+		} else {
+			if (alias) {
+				name_convert(dest, src, MANGLE, NULL);
+			}
+		}
+		dest += strlen(dest);
+		*dest = '\\';
+		if (src - 1 > fpath)
+			src[-1] = '/';
+		src = src2;
+	}
+	if (dest[-1] == ':') dest++;
+	*dest = '\0';
+}
 
 BOOL valid_dos_char[256];
 
