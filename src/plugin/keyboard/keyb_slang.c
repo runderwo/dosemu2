@@ -788,7 +788,7 @@ static int init_slang_keymaps(void)
      buf[1] = erasekey+'@';
      buf[2] = 0;
      define_key(buf, KEY_BKSP, m);
-  } else if (erasekey > '~' && erasekey <= 0xFF) {
+  } else if (erasekey > '~') {
      buf[0] = erasekey &0xff;
      buf[1] = 0;
      define_key(buf, KEY_BKSP, m);

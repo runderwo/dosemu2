@@ -2202,18 +2202,18 @@ void run_pm_int(int i)
 	| i_d_d_i  |
    --------------------------------------------------- */
   if (DPMI_CLIENT.is_32) {
-    *(--((unsigned long *) ssp)) = (unsigned long) in_dpmi_dos_int;
+    ssp -= 2, *((unsigned long *) ssp) = (unsigned long) in_dpmi_dos_int;
     *--ssp = (us) 0;
     *--ssp = DPMI_CLIENT.stack_frame.ss;
-    *(--((unsigned long *) ssp)) = DPMI_CLIENT.stack_frame.esp;
-    *(--((unsigned long *) ssp)) = DPMI_CLIENT.stack_frame.eflags;
+    ssp -= 2, *((unsigned long *) ssp) = DPMI_CLIENT.stack_frame.esp;
+    ssp -= 2, *((unsigned long *) ssp) = DPMI_CLIENT.stack_frame.eflags;
     *--ssp = (us) 0;
-    *--ssp = DPMI_CLIENT.stack_frame.cs; 
-    *(--((unsigned long *) ssp)) = DPMI_CLIENT.stack_frame.eip;
-    *(--((unsigned long *) ssp)) = DPMI_CLIENT.stack_frame.eflags;
+    *--ssp = DPMI_CLIENT.stack_frame.cs;
+    ssp -= 2, *((unsigned long *) ssp) = DPMI_CLIENT.stack_frame.eip;
+    ssp -= 2, *((unsigned long *) ssp) = DPMI_CLIENT.stack_frame.eflags;
     *--ssp = (us) 0;
-    *--ssp = DPMI_CLIENT.DPMI_SEL; 
-    *(--((unsigned long *) ssp)) = DPMI_OFF + HLT_OFF(DPMI_return_from_pm);
+    *--ssp = DPMI_CLIENT.DPMI_SEL;
+    ssp -= 2, *((unsigned long *) ssp) = DPMI_OFF + HLT_OFF(DPMI_return_from_pm);
     PMSTACK_ESP -= 36;
   } else {
     *--ssp = (unsigned short) in_dpmi_dos_int;
@@ -2845,15 +2845,15 @@ static void do_cpu_exception(struct sigcontext_struct *scp)
   if (DPMI_CLIENT.is_32) {
     *--ssp = (us) 0;
     *--ssp = _ss;
-    *(--((unsigned long *) ssp)) = _esp;
-    *(--((unsigned long *) ssp)) = (_eflags&~IF)|(dpmi_eflags&IF);
+    ssp -= 2, *((unsigned long *) ssp) = _esp;
+    ssp -= 2, *((unsigned long *) ssp) = (_eflags&~IF)|(dpmi_eflags&IF);
     *--ssp = (us) 0;
     *--ssp = _cs;
-    *(--((unsigned long *) ssp)) = _eip;
-    *(--((unsigned long *) ssp)) = _err;
+    ssp -= 2, *((unsigned long *) ssp) = _eip;
+    ssp -= 2, *((unsigned long *) ssp) = _err;
     *--ssp = (us) 0;
     *--ssp = DPMI_CLIENT.DPMI_SEL; 
-    *(--((unsigned long *) ssp)) = DPMI_OFF + HLT_OFF(DPMI_return_from_exception);
+    ssp -= 2, *((unsigned long *) ssp) = DPMI_OFF + HLT_OFF(DPMI_return_from_exception);
     PMSTACK_ESP -= 32;
   } else {
     *--ssp = _ss;
@@ -2899,8 +2899,9 @@ void dpmi_fault(struct sigcontext_struct *scp)
 #endif
 {
 
-#define LWORD32(x) (DPMI_CLIENT.is_32 ? (unsigned long) _##x : _LWORD(x))
+#define LWORD32(x,y) {if (DPMI_CLIENT.is_32) (unsigned long) _##x y; else _LWORD(x) y;}
 #define _LWECX	   (DPMI_CLIENT.is_32 ^ prefix67 ? _ecx : _LWORD(ecx))
+#define set_LWECX(x) {if (DPMI_CLIENT.is_32 ^ prefix67) _ecx=(x); else _LWORD(ecx) = (x);}
 
   us *ssp;
   unsigned char *csp, *lina;
@@ -3022,10 +3023,10 @@ void dpmi_fault(struct sigcontext_struct *scp)
 	if (debug_level('M')>=9)
           D_printf("DPMI: int 0x%x\n", csp[0]);
 	if (DPMI_CLIENT.is_32) {
-	  *(--((unsigned long *) ssp)) = _eflags;
+	  ssp -= 2, *((unsigned long *) ssp) = _eflags;
 	  *--ssp = (us) 0;
 	  *--ssp = _cs;
-	  *(--((unsigned long *) ssp)) = _eip;
+	  ssp -= 2, *((unsigned long *) ssp) = _eip;
 	  _esp -= 12;
 	} else {
 	  *--ssp = _LWORD(eflags);
@@ -3133,14 +3134,14 @@ void dpmi_fault(struct sigcontext_struct *scp)
 	| i_d_d_i  |
    --------------------------------------------------- */
 	  if (DPMI_CLIENT.is_32) {
-	    _eip = *(((unsigned long *) ssp)++);
+	    _eip = *((unsigned long *) ssp), ssp += 2;
 	    _cs = *ssp++;
 	    ssp++;
-	    _eflags = *(((unsigned long *) ssp)++);
-	    _esp = *(((unsigned long *) ssp)++);
+	    _eflags = *((unsigned long *) ssp), ssp += 2;
+	    _esp = *((unsigned long *) ssp), ssp += 2;
 	    _ss = *ssp++;
 	    ssp++;
-	    in_dpmi_dos_int = (int) *(((unsigned long *) ssp)++);
+	    in_dpmi_dos_int = ((int) *((unsigned long *) ssp)), ssp += 2;
 	  } else {
 	    _LWORD(eip) = *ssp++;
 	    _cs = *ssp++;
@@ -3196,12 +3197,12 @@ void dpmi_fault(struct sigcontext_struct *scp)
 
 	  if (DPMI_CLIENT.is_32) {
 	    /* poping error code */
-	    ((unsigned long *) ssp)++;
-	    _eip = *(((unsigned long *) ssp)++);
+	    ssp += 2;
+	    _eip = *((unsigned long *) ssp), ssp += 2;
 	    _cs = *ssp++;
 	    ssp++;
-	    _eflags = *(((unsigned long *) ssp)++);
-	    _esp = *(((unsigned long *) ssp)++);
+	    _eflags = *((unsigned long *) ssp), ssp += 2;
+	    _esp = *((unsigned long *) ssp), ssp += 2;
 	    _ss = *ssp++;
 	    ssp++;
 	  } else {
@@ -3284,7 +3285,7 @@ void dpmi_fault(struct sigcontext_struct *scp)
 	  int intr = _eip-1-DPMI_OFF-HLT_OFF(DPMI_interrupt);
 	  D_printf("DPMI: default protected mode interrupthandler 0x%02x called\n",intr);
 	  if (DPMI_CLIENT.is_32) {
-	    _eip = *(((unsigned long *) ssp)++);
+	    _eip = *((unsigned long *) ssp), ssp += 2;
 	    _cs = *ssp++;
 	    ssp++;
 	    _eflags = *((unsigned long *) ssp);
@@ -3339,8 +3340,8 @@ void dpmi_fault(struct sigcontext_struct *scp)
       else
 	_LWORD(edi) += port_rep_inb(_LWORD(edx), (Bit8u *)SEL_ADR(_es,_LWORD(edi)),
         	_LWORD(eflags)&DF, (is_rep?_LWECX:1));
-      if (is_rep) _LWECX = 0;
-      LWORD32(eip)++;
+      if (is_rep) set_LWECX(0);
+      LWORD32(eip,++);
       break;
 
     case 0x6d:			/* [rep] insw/d */
@@ -3363,8 +3364,8 @@ void dpmi_fault(struct sigcontext_struct *scp)
 	  _LWORD(edi) += port_rep_inw(_LWORD(edx), (Bit16u *)SEL_ADR(_es,_LWORD(edi)),
 		_LWORD(eflags)&DF, (is_rep?_LWECX:1));
       }
-      if (is_rep) _LWECX = 0;
-      LWORD32(eip)++;
+      if (is_rep) set_LWECX(0);
+      LWORD32(eip,++);
       break;
 
     case 0x6e:			/* [rep] outsb */
@@ -3377,8 +3378,8 @@ void dpmi_fault(struct sigcontext_struct *scp)
       else
 	_LWORD(esi) += port_rep_outb(_LWORD(edx), (Bit8u *)SEL_ADR(pref_seg,_LWORD(esi)),
 	        _LWORD(eflags)&DF, (is_rep?_LWECX:1));
-      if (is_rep) _LWECX = 0;
-      LWORD32(eip)++;
+      if (is_rep) set_LWECX(0);
+      LWORD32(eip,++);
       break;
 
     case 0x6f:			/* [rep] outsw/d */
@@ -3401,8 +3402,8 @@ void dpmi_fault(struct sigcontext_struct *scp)
 	  _LWORD(esi) += port_rep_outw(_LWORD(edx), (Bit16u *)SEL_ADR(pref_seg,_LWORD(esi)),
 		_LWORD(eflags)&DF, (is_rep?_LWECX:1));
       } 
-      if (is_rep) _LWECX = 0;
-      LWORD32(eip)++;
+      if (is_rep) set_LWECX(0);
+      LWORD32(eip,++);
       break;
 
     case 0xe5:			/* inw xx, ind xx */
@@ -3410,54 +3411,54 @@ void dpmi_fault(struct sigcontext_struct *scp)
         D_printf("DPMI: in%s xx\n", prefix66 ^ DPMI_CLIENT.is_32 ? "d" : "w");
       if (prefix66 ^ DPMI_CLIENT.is_32) _eax = ind((int) csp[0]);
       else _LWORD(eax) = inw((int) csp[0]);
-      LWORD32(eip) += 2;
+      LWORD32(eip, += 2);
       break;
     case 0xe4:			/* inb xx */
       if (debug_level('M')>=9)
         D_printf("DPMI: inb xx\n");
       _LWORD(eax) &= ~0xff;
       _LWORD(eax) |= inb((int) csp[0]);
-      LWORD32(eip) += 2;
+      LWORD32(eip, += 2);
       break;
     case 0xed:			/* inw dx */
       if (debug_level('M')>=9)
         D_printf("DPMI: in%s dx\n", prefix66 ^ DPMI_CLIENT.is_32 ? "d" : "w");
       if (prefix66 ^ DPMI_CLIENT.is_32) _eax = ind(_LWORD(edx));
       else _LWORD(eax) = inw(_LWORD(edx));
-      LWORD32(eip)++;
+      LWORD32(eip,++);
       break;
     case 0xec:			/* inb dx */
       if (debug_level('M')>=9)
         D_printf("DPMI: inb dx\n");
       _LWORD(eax) &= ~0xff;
       _LWORD(eax) |= inb(_LWORD(edx));
-      LWORD32(eip) += 1;
+      LWORD32(eip, += 1);
       break;
     case 0xe7:			/* outw xx */
       if (debug_level('M')>=9)
         D_printf("DPMI: outw xx\n");
       if (prefix66 ^ DPMI_CLIENT.is_32) outd((int)csp[0], _eax);
       else outw((int)csp[0], _LWORD(eax));
-      LWORD32(eip) += 2;
+      LWORD32(eip, += 2);
       break;
     case 0xe6:			/* outb xx */
       if (debug_level('M')>=9)
         D_printf("DPMI: outb xx\n");
       outb((int) csp[0], _LO(ax));
-      LWORD32(eip) += 2;
+      LWORD32(eip, += 2);
       break;
     case 0xef:			/* outw dx */
       if (debug_level('M')>=9)
         D_printf("DPMI: outw dx\n");
       if (prefix66 ^ DPMI_CLIENT.is_32) outd(_LWORD(edx), _eax);
       else outw(_LWORD(edx), _LWORD(eax));
-      LWORD32(eip) += 1;
+      LWORD32(eip, += 1);
       break;
     case 0xee:			/* outb dx */
       if (debug_level('M')>=9)
         D_printf("DPMI: outb dx\n");
       outb(_LWORD(edx), _LO(ax));
-      LWORD32(eip) += 1;
+      LWORD32(eip, += 1);
       break;
 
     case 0x0f:
@@ -3773,10 +3774,10 @@ done:
 	|  eflags  |
    --------------------------------------------------- */
     if (DPMI_CLIENT.is_32) {
-	*(--((unsigned long *) ssp)) = DPMI_CLIENT.stack_frame.eflags;
+	ssp -= 2, *((unsigned long *) ssp) = DPMI_CLIENT.stack_frame.eflags;
 	*--ssp = (us) 0;
 	*--ssp = DPMI_CLIENT.DPMI_SEL; 
-	*(--((unsigned long *) ssp)) = DPMI_OFF + HLT_OFF(DPMI_return_from_rm_callback);
+	ssp -= 2, *((unsigned long *) ssp) = DPMI_OFF + HLT_OFF(DPMI_return_from_rm_callback);
 	PMSTACK_ESP -= 12;
     } else {
 	*--ssp = (unsigned short) DPMI_CLIENT.stack_frame.eflags;
@@ -3854,7 +3855,7 @@ done:
     if (DPMI_CLIENT.is_32) {
 	*--ssp = (us) 0;
 	*--ssp = DPMI_CLIENT.DPMI_SEL; 
-	*(--((unsigned long *) ssp)) =
+	ssp -= 2, *((unsigned long *) ssp) =
 	     DPMI_OFF + HLT_OFF(DPMI_return_from_mouse_callback);
 	PMSTACK_ESP -= 8;
     } else {

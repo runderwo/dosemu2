@@ -1412,6 +1412,7 @@ test -n "$target_alias" &&
     NONENONEs,x,x, &&
   program_prefix=${target_alias}-
 
+OPT=$CFLAGS
 ac_ext=c
 ac_cpp='$CPP $CPPFLAGS'
 ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
@@ -8655,18 +8656,26 @@ INCDIR="-I\${top_builddir}/src/include -I\${top_builddir}/src/plugin/include ${S
 
 
 CFLAGS="-Wall -Wstrict-prototypes -Wmissing-declarations -Wnested-externs"
+if test -z "$OPT"; then
+  if test "$enable_debug" = "yes"; then
+    CFLAGS="$CFLAGS -g"
+    cat >>confdefs.h <<\_ACEOF
+#define _DEBUG 1
+_ACEOF
+
+    OPT="-O"
+  else
+    OPT="-O2" # BIG NOTE: do _not_ use -O3,
+              # because in forces _inline_ at places where we don't want it !
+              # If we want _inline_, well then we 'code' it.
+    OPT="$OPT -fomit-frame-pointer"  # never omit the frame pointer when debugging!
+  fi
+fi
 if test "$enable_debug" = "yes"; then
-  CFLAGS="$CFLAGS -g"
   cat >>confdefs.h <<\_ACEOF
 #define _DEBUG 1
 _ACEOF
 
-  OPT="-O"
-else
-  OPT="-O2"   # BIG NOTE: do _not_ use -O3,
-              # because in forces _inline_ at places where we don't want it !
-              # If we want _inline_, well then we 'code' it.
-  OPT="$OPT -fomit-frame-pointer"  # never omit the frame pointer when debugging!
 fi
 
  # Check whether --enable-cpuemu or --disable-cpuemu was given.
@@ -8783,12 +8792,15 @@ echo "${ECHO_T}no" >&6
 
   # -m486 is usually in the specs for the compiler
   # but gcc-3.0 wants -mcpu=i486 instead
+  # and gcc-3.4 wants -mtune=i486 instead
   # let the compiler options be dependent of the _target_
   # where dosemu is compiled for, not the host
   if test "$target_cpu" = "athlon" -a $GCC_VERSION_CODE -le 2095 ;  then
     target_cpu="i686"
   fi
-  if test "$GCC_VERSION_CODE" -ge 2095 ; then
+  if test "$GCC_VERSION_CODE" -ge 3004 ; then
+     OPT="$OPT -mtune=$target_cpu"
+  elif test "$GCC_VERSION_CODE" -ge 2095 ; then
      OPT="$OPT -mcpu=$target_cpu"
   else
      case "$target_cpu" in

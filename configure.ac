@@ -15,6 +15,7 @@ AC_CONFIG_HEADER(src/include/config.h)
 AC_CANONICAL_TARGET([])
 
 dnl Checks for programs.
+OPT=$CFLAGS
 AC_PROG_CC
 AC_PROG_GCC_TRADITIONAL
 AC_PROG_AWK
@@ -447,15 +448,20 @@ INCDIR="-I\${top_builddir}/src/include -I\${top_builddir}/src/plugin/include ${S
 AC_SUBST(INCDIR)
 
 CFLAGS="-Wall -Wstrict-prototypes -Wmissing-declarations -Wnested-externs"
-if test "$enable_debug" = "yes"; then
-  CFLAGS="$CFLAGS -g"
-  AC_DEFINE(_DEBUG)
-  OPT="-O"
-else
-  OPT="-O2"   # BIG NOTE: do _not_ use -O3,
+if test -z "$OPT"; then
+  if test "$enable_debug" = "yes"; then
+    CFLAGS="$CFLAGS -g"
+    AC_DEFINE(_DEBUG)
+    OPT="-O"
+  else
+    OPT="-O2" # BIG NOTE: do _not_ use -O3,
               # because in forces _inline_ at places where we don't want it !
               # If we want _inline_, well then we 'code' it.
-  OPT="$OPT -fomit-frame-pointer"  # never omit the frame pointer when debugging!
+    OPT="$OPT -fomit-frame-pointer"  # never omit the frame pointer when debugging!
+  fi
+fi
+if test "$enable_debug" = "yes"; then
+  AC_DEFINE(_DEBUG)
 fi
 
 dnl CPU emulator
@@ -541,12 +547,15 @@ if test "$GCC" = "yes" ; then
 
   # -m486 is usually in the specs for the compiler
   # but gcc-3.0 wants -mcpu=i486 instead
+  # and gcc-3.4 wants -mtune=i486 instead
   # let the compiler options be dependent of the _target_
   # where dosemu is compiled for, not the host
   if test "$target_cpu" = "athlon" -a $GCC_VERSION_CODE -le 2095 ;  then
     target_cpu="i686"
   fi
-  if test "$GCC_VERSION_CODE" -ge 2095 ; then
+  if test "$GCC_VERSION_CODE" -ge 3004 ; then
+     OPT="$OPT -mtune=$target_cpu"
+  elif test "$GCC_VERSION_CODE" -ge 2095 ; then
      OPT="$OPT -mcpu=$target_cpu"
   else
      case "$target_cpu" in

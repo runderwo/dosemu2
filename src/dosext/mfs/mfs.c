@@ -47,6 +47,11 @@
  *
  * HISTORY:
  * $Log$
+ * Revision 1.2.2.5  2004/05/18 23:03:45  bartoldeman
+ * backport: Fix gcc 3.4 warnings
+ * Configure respects CFLAGS.
+ * Fix some in_dpmi misuses. Noticed by japheth@users.sf.net, bug #934921.
+ *
  * Revision 1.2.2.4  2004/03/04 00:23:28  bartoldeman
  * Apply SIGALRM/MFS fixes to the stable code.
  *
@@ -1401,7 +1406,7 @@ dos_readdir(DIR *dir)
 {
   struct direct *ret;
 
-  ret = (struct direct *)RPT_SYSCALL(readdir(dir));
+  ret = readdir(dir);
 
   return (ret);
 }
