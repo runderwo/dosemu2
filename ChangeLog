@@ -1,3 +1,70 @@
+2004/03/06 ver 1.2.1 released
+	From Pete Cervasio
+	- allow int 1A function 3 to set the emulated CMOS time of the day
+	  clock.
+	From Clarence
+	- Now, you can run your favourite DOS apps like this:
+	  xdosemu "/home/clarence/games/commander keen/keen1.exe"
+	  And it will automatically:
+	   1. mount / if the specified program is not available from an
+	      already-redirected drive
+	   2. "cd" to the correct directory
+	   3. and execute the program automagically, all without _any_ 
+	      typing in DOS
+	  (if "unix -e" or "unix -c" is put at the end of your autoexec.bat)
+	  "ported" over some more builtins i.e. I just cut and paste them
+	  (except for com_dossetcurrentdir()).
+	  cosmetic change to GetRedirectionRoot() in mfs.c
+	- DAC fixes for vgaemu:
+	  * accesses to port 0x3C9 should not change the DAC state
+	    (as reported by a read to 0x3C7)
+	  * DOSEMU's 0x3C7 reads returned inverted bits!
+	  * If you write to 0x3C9 after writing to 0x3C7, the colour that
+	    actually gets set == <what you wrote to 0x3C7> + 1 (fixes
+	    Starcon2)
+	From Stas
+	- NULL pointer fixes:
+	  * Don't call keyb_server_reset() before keyboard client is
+	    initialized, as this causes a NULL ptr deref in 
+	    keyb_client_set_leds() with the potential of calling realmode
+	    code
+	  * Avoid NULL ptr deref when SDA is not yet initialized (at DOS
+	    boot-up).
+	- Certain mouse types (namely, MOUSE_GPM) must never be
+	  closed/re-opened.  This makes the gpm mouse to survive the
+	  console switch, and quite accidentally also solves the obscure
+	  lock-ups of Volkov Commander after a console switch.
+	- Fix sound for the game Screamer
+	- Improved bpint dosdebug command. Works under DPMI now.
+	- Clear AC in quite a few places to avoid recursion into an
+	  exception 0x11 handler.
+	- Disallow exception 0x11. The reason is that AM bit of CR0 is
+	  supposed to be clear under DOS, but it is not under Linux.
+	- Reduce memory consumption for builtins from 75K to 3K.
+	From Bart
+	- Allow fullscreen toggling using xmode.
+	- Make "unix -e" a hybrid of the old
+	  "unix -e" and "unix -c": if the Linux path cannot be
+	  canonicalized it will be interpreted as a DOS command.  This way
+	  "dosemu -E dir" continues to work.  Introduced "unix -r" to get
+	  the old behaviour of -e for the purists.
+	- Count number of times middle button is pressed even for 2 button
+	  mice (will be zero). Fixes bug #891650
+	- dpmi.c: dpmi.c, do_int31, case 0x0401: added a missing "break"
+	  causing this function to return rubbish as vendor name
+	  (suggested by japheth at users.sourceforge.net)
+	- Block SIGALRM instead of turning of the itimer for the MFS. Also 
+	  check if one is pending before calling handle_signals(). Without
+	  this change situations that spend lots of time in the MFS 
+	  effectively could have SIGALRM disabled (showed up on SMP
+	  machines in a dir loop).
+	- int.c: Execute dos_post_boot() (mouse_post_boot()) not only from
+	  int28 but also from int21/ah=4b. Fixes problem with wd from
+	  unix -e & mouse.
+	- Repair the automatic exit for "unix -e" without -E argument.
+	- Makefiles:  Remove all SUBDIR=... defs. They are not necessary
+	  anymore and may produce the wrong .a file if you invoke make in
+	  the subdir.
 2004/02/10 ver 1.2.0.1 unofficial pre-release
 	From Stas
 	- Add support for MIDI input.
