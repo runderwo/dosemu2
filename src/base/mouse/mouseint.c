@@ -467,6 +467,8 @@ void DOSEMUMouseEvents(void)
 	  nBytes = 0;
 	if (nBytes>0)
 	  qEnd += nBytes;
+	if (!mouse.enabled)
+	  return;
 	if (qBeg < qEnd) {
 	  m_printf("MOUSE: Read %d bytes. %d bytes in queue\n",
 	    nBytes>0 ? nBytes : 0, qEnd-qBeg);
