@@ -5,11 +5,12 @@ config {
   vidmode on
   x on
   net on
-  dodebug off
+  debug off
   linkstatic off
   cpuemu off
   aspi on
   svgalib off
+  gpm on
   plugin_keyboard off
   plugin_kbd_unicode on
   plugin_extra_charsets on

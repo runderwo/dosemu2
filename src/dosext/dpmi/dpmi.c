@@ -630,8 +630,8 @@ static int SetSelector(unsigned short selector, unsigned long base_addr, unsigne
     D_printf("DPMI: set_ldt_entry() failed\n");
     return -1;
   }
-  D_printf("DPMI: SetSelector: 0x%04x base=0x%lx limit=0x%x\n",
-    selector, base_addr, limit);
+  D_printf("DPMI: SetSelector: 0x%04x base=0x%lx limit=0x%x big=%i\n",
+    selector, base_addr, limit, is_big);
   Segments[ldt_entry].base_addr = base_addr;
   Segments[ldt_entry].limit = limit;
   Segments[ldt_entry].type = type;
@@ -735,21 +735,32 @@ static void FreeAllDescriptors(void)
     }
 }
 
-int ConvertSegmentToDescriptor(unsigned short segment)
+static int ConvertSegmentToDescriptor32(unsigned short segment, int limit_is_32)
 {
   unsigned long baseaddr = segment << 4;
+  unsigned long limit = limit_is_32 ? 0xffffffff : 0xffff;
   unsigned short selector;
   int i;
   D_printf("DPMI: convert seg %#x to desc\n", segment);
   for (i=1;i<MAX_SELECTORS;i++)
-    if ((Segments[i].base_addr==baseaddr) && (Segments[i].limit==0xffff) &&
+    if ((Segments[i].base_addr==baseaddr) && (Segments[i].limit==limit) &&
 	(Segments[i].type==MODIFY_LDT_CONTENTS_DATA) && Segments[i].used)
       return (i<<3) | 0x0007;
   D_printf("DPMI: SEG at base=%#lx not found, allocate a new one\n", baseaddr);
   if (!(selector = AllocateDescriptors(1))) return 0;
-  if (SetSelector(selector, baseaddr, 0xffff, DPMIclient_is_32,
+  if (SetSelector(selector, baseaddr, limit, DPMIclient_is_32,
                   MODIFY_LDT_CONTENTS_DATA, 0, 0, 0, 0)) return 0;
   return selector;
+}
+
+int ConvertSegmentToDescriptor(unsigned short segment)
+{
+  return ConvertSegmentToDescriptor32(segment, DPMIclient_is_32);
+}
+
+static int ConvertSegmentToDescriptor16(unsigned short segment)
+{
+  return ConvertSegmentToDescriptor32(segment, 0);
 }
 
 static inline unsigned short GetNextSelectorIncrementValue(void)
@@ -766,14 +777,14 @@ static int SystemSelector(unsigned short selector)
   return 0;
 }
 
-static inline int ValidSelector(unsigned short selector)
+int ValidSelector(unsigned short selector)
 {
   if (selector && ((selector >> 3) < MAX_SELECTORS) && (selector & 4) == 4)
     return 1;
   return 0;
 }
 
-static int ValidAndUsedSelector(unsigned short selector)
+int ValidAndUsedSelector(unsigned short selector)
 {
   if (ValidSelector(selector) && Segments[selector >> 3].used)
     return 1;
@@ -1356,7 +1367,7 @@ static void do_int31(struct sigcontext_struct *scp)
 #endif    
     break;
   case 0x0002:
-    if (!(_LWORD(eax)=ConvertSegmentToDescriptor(_LWORD(ebx)))) {
+    if (!(_LWORD(eax)=ConvertSegmentToDescriptor16(_LWORD(ebx)))) {
       _LWORD(eax) = 0x8011;
       _eflags |= CF;
     }
@@ -1392,7 +1403,7 @@ static void do_int31(struct sigcontext_struct *scp)
   case 0x0009:
     CHECK_SELECTOR(_LWORD(ebx));
     { int x;
-      if ((x=SetDescriptorAccessRights(_LWORD(ebx), _ecx & (DPMIclient_is_32 ? 0xffff : 0x00ff))) !=0) {
+      if ((x=SetDescriptorAccessRights(_LWORD(ebx), _LWORD(ecx))) !=0) {
         if (x == -1) _LWORD(eax) = 0x8021;
         else if (x == -2) _LWORD(eax) = 0x8022;
         else _LWORD(eax) = 0x8025;
@@ -2773,6 +2784,8 @@ static void do_cpu_exception(struct sigcontext_struct *scp)
   unsigned char dd = debug_level('M');
   set_debug_level('M', 1);
 #endif
+
+  mhp_intercept("\nCPU Exception occured, invoking dosdebug\n\n", "+9M");
 
 #ifdef TRACE_DPMI
   if (debug_level('t') && (_trapno == 1)) {

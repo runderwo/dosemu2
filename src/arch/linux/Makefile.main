@@ -106,11 +106,12 @@ optionalsubdirs:	$(OPTIONALSUBDIRS)
 docsubdirs:	$(DOCS)
 
 $(DIRLIST):
-	@($(MAKE) -C $@)
+	@($(MAKE) SUBDIR:=$@ -C $@)
 
 version:	versetup
 
 versetup:
+	@mkdir -p lib
 	@mkdir -p $(BINPATH)/bin
 	@mkdir -p $(BINPATH)/commands
 	@cp -p commands/precompiled/*.{com,exe} $(BINPATH)/commands 2> /dev/null || true
@@ -183,7 +184,11 @@ install:
 	  $(INSTALL) -m 0644 $(REALTOPDIR)/etc/global.conf $(DESTDIR)$(sysconfdir)/global.conf.example; \
 	fi
 	$(INSTALL) -d $(DESTDIR)$(dosemudir)/keymap
-	$(INSTALL) -m 0644 $(REALTOPDIR)/etc/keymap/[a-z]* $(DESTDIR)$(dosemudir)/keymap
+	for i in $(REALTOPDIR)/etc/keymap/*; do \
+	  if [ -f $$i ]; then \
+	    $(INSTALL) -m 0644 $$i $(DESTDIR)$(dosemudir)/keymap; \
+	  fi; \
+	done
 	$(INSTALL) -d $(DESTDIR)$(bindir)
 	$(INSTALL) -m 0755 ../bin/$(DOSBIN) $(DESTDIR)$(bindir)
 	$(INSTALL) -m 0755 ../bin/dosemu $(DESTDIR)$(bindir)
@@ -297,7 +302,7 @@ $(REALCLEANDIRS):
 	-@$(MAKE) -C $(subst .realclean,,$@) realclean CLEANING=true
 
 pristine:	realclean
-	-rm -f lib/*
+	-rm -rf lib
 	-rm -rf $(BINPATH) ../bin ../commands ../etc/xtermdos ../etc/xinstallvgafont
 	-rm -rf ../testboot
 

@@ -531,8 +531,9 @@ leavedos(int sig)
 	* My port logic is actually stolen from kd_nosound in the kernel.
 	* 		--EB 21 September 1997
 	*/
-       port_safe_outb(0x61, port_safe_inb(0x61)&0xFC); /* turn off any sound */
-    }
+       if (portserver_pid)
+          port_safe_outb(0x61, port_safe_inb(0x61)&0xFC); /* turn off any sound */
+     }
 
 #ifdef SIG
     g_printf("calling SIG_close\n");
