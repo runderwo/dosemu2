@@ -199,15 +199,15 @@
 
   Because PDETHER is an ODI driver, you load..
 
-
-
-
-
       LSL (at least version 2.20; older versions may crash)
-      PDETHER or IPXPD or PDIPX
+      PDETHER
       IPXODI
       NETX
 
+  If you use IPXPD or PDIPX you just load
+
+      IPXPD or PDIPX
+      NETX
 
   Because PDETHER is an ODI driver, there must be corresponding section
   in your net.cfg file.	Here is a snippet of my NET.CFG
