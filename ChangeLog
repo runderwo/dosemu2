@@ -1,3 +1,43 @@
+2004/02/10 ver 1.2.0.1 unofficial pre-release
+	From Stas
+	- Add support for MIDI input.
+	- Fixed a couple of bugs in MPU401 code.
+	- Alert if handle_signals() is re-entered (happens if, for example,
+          RPT_SYSCALL is enabled in emu.h).
+	- Remove glibc calls from SIGALRM and SIGIO handlers.
+	- Remove (now unnecessary, since we know the reasons) deadlock
+	  "protection".
+	- dosdebug:
+	  * Parse multiple commands properly
+	  * Stop trace loop in mhp_intercept()
+	- Detection for the %esp CPU bug (see EMUFailure.txt). Recovery
+	  part is disabled for now.
+	- Final (hopefully) pass on DPMI 1.0 compliant multiple client
+          support.  Now it works for something more than just building
+          FreeDOS with bcc and nasm32. 
+	  * System descriptor aliases are now per client and are either
+	    inherited or or recreated, depending on whether the IDT is
+	    inherited or not.
+	  * extender-specific structures are now per-client too.
+	- DPMI: Avoid execution on .data
+	From Bart
+	- Add support for the GPM mouse on the console (with a little
+	  help from mc) and avoid conflicts with a serial mouse by moving
+	  internal mouse init before serial init.
+	- mkbindist now creates the pcf fonts on the fly -- that will
+	  avoid problems with fonts in the binary tarball.
+	- Add support for $_X_fullscreen and corresponding switch -w.
+	- Add support for $_mouse_internal and corresponding switch -m to
+	  be able to switch off the DOSEMU internal mouse driver.
+	- Move the "BUG: dosemu touched protected video mem" recover
+	  logic earlier in sigsegv.c and vgaemu.c (with Stas)
+	- Mark critical global variables used in signal handlers as
+	  volatile to avoid gcc over-optimizations (hint from Stas)
+	- Fix bug #866618 rows ower 80 char: a DOS text-mode program 
+	  programmed the VGA controller to (logically) have more than
+	  80 columns per line but vgaemu didn't pick it up.
+	- Fixed page_size calculation: solved display problems with Duke
+	  Nukem 1
 2004/01/18 ver 1.2.0 released
 	From Stas
 	- updates to TUN/TAP README about bridging
