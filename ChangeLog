@@ -1,3 +1,53 @@
+2004/05/19 ver 1.2.1.1 unofficial pre-release
+	From Stas
+	- Don't allow client stack to run above the dosemu stack in an
+	  attempt to work around an CPU bug involving ESP. Seems to get the
+	  ancient MS linker to work. (bug #929123)
+	- Linux-2.6 needs SA_NODEFER to allow the recursive signal handling.
+	  We need 2 nesting levels of SIGSEGV sometimes. (part of bug
+	  #929123).
+	- Restart syscalls after EINTR. Should fix bug #885692.
+	- Fix some in_dpmi misuses. Noticed by japheth@users.sf.net,
+	  bug #934921.
+	- Implemented extended exception stack frame (DPMI 1.0)
+	- fixes relating to bug #909015:
+	  * Allow Visible Page Faults (DPMI 1.0)
+	  * Properly free segregs after freeing memory block
+	  * Properly return the canonicalized filename to DPMI client
+	  * Fix bug in function 0x56 (rename file)
+	- Fix memory leak in lpt.c
+	- Fix memory corruption in keystroke handling + cleanups. Bug
+	  #909588
+	- Remove wrong IRQ triggering code from ser_ports.c. Part of bug
+	  #944346
+	- Do not define spurious "console" in global.conf if $_graphics=(1)
+	From Michael Karcher
+	- check /proc/net/ipx/route for kernel 2.6
+	From Bart
+	- check /proc/net/ipx/interface for kernel 2.6
+	- Fix compilation problems when the old keyboard code is used.
+	- Don't use CFLAGS for the 16bit BIOS asm files. The -g in there
+	  confused binutils/gdb and that was the reason for the -gstabs+.
+	  Now we can just use the standard DWARF-2 debug info.
+	- Get rid of the "inconsistency in define key" warning message
+	  where it's harmless.
+	- Fix gcc 3.4 warnings (mainly about deprecated lvalue casts)
+	- The configure script now respects the user's CFLAGS setting.
+	- use "syscall" and glibc functions throughout instead of the
+	  libless and asm varieties.
+	- Define LD at the right place. Remove unnecessary exports in
+	  Makefile.main
+	- Correct int15/ax=e801 so that $_xms > 64M is reported correctly
+	  by MEM
+	- Consolidated all idling calls into one common function. INT 2F
+	  calls (includes MFS) reset idling; this helps applications that
+	  are mostly idle but should read from disk quickly (FreeDOS EDIT
+	  for instance)
+	- Reorganised global.conf printer processing to avoid a spurious
+	  printer definition.
+	- Check if catching port i/o really works using outb(0x20,0x20),
+	  if not the user should upgrade a 2.6 Linux kernel to 2.6.6 or 
+	  newer.
 2004/03/06 ver 1.2.1 released
 	From Pete Cervasio
 	- allow int 1A function 3 to set the emulated CMOS time of the day
