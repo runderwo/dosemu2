@@ -135,7 +135,7 @@ static int video_init(void)
 
   }
   
-  clear_screen(video_page, 7);
+  if (!config.X) clear_screen(video_page, 7);
 
   return 0;
 }
