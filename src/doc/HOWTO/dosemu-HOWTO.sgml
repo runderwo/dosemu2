@@ -997,6 +997,13 @@ $_ports = $_ports, " device /dev/lp0 fast range 0x3bc 0x3bf"
 This blank is important
 </screen>
 
+<para>
+Note: newer kernels don't have hardcoded dependencies between
+<filename>/dev/lp*</filename> and ioports. Check
+<filename>/proc/ioports</filename> for lines such as
+<literal>0378-037a : parport0</literal>.
+</para>
+
 </sect2>
 
 </sect1>
