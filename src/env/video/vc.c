@@ -46,7 +46,7 @@
 #endif
 
 #define INIT_C2TRAP
-#define NO_VC_NO_DEBUG
+#define NO_VC_NO_DEBUG 0
 
 #include "emu.h"
 #include "memory.h"
@@ -157,9 +157,11 @@ int dos_has_vt = 1;
 static void
 acquire_vt (int sig, struct sigcontext_struct context)
 {
+  restore_eflags_fs_gs();
+
   dos_has_vt = 1;
 
-#ifdef NO_VC_NO_DEBUG
+#if NO_VC_NO_DEBUG
   if (user_vc_switch) shut_debug = 0;
 #endif
   flush_log();
@@ -277,7 +279,7 @@ SIGRELEASE_call (void)
   else {
    /* we don't want any debug activity while VC is not active */
     flush_log();
-#ifdef NO_VC_NO_DEBUG
+#if NO_VC_NO_DEBUG
     if (user_vc_switch) shut_debug = 1;
 #endif
   }
@@ -302,6 +304,8 @@ wait_vc_active (void)
 static inline void
 release_vt (int sig, struct sigcontext_struct context)
 {
+  restore_eflags_fs_gs();
+
   dos_has_vt = 0;
 
   SIGNAL_save (SIGRELEASE_call);

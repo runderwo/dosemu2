@@ -134,7 +134,6 @@ struct DPMIclient_struct DPMIclient[DPMI_MAX_CLIENTS];
 unsigned short DPMI_private_data_segment;
 unsigned long PMSTACK_ESP = 0;	/* protected mode stack descriptor */
 
-struct sigcontext_struct _emu_stack_frame;  /* used to store emulator registers */
 static struct sigcontext_struct *emu_stack_frame = &_emu_stack_frame;
 
 #define CHECK_SELECTOR(x) \
