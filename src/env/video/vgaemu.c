@@ -2069,6 +2069,7 @@ int vga_emu_setmode(int mode, int width, int height)
   vga.mode_type = vmi->type;
   vga.width = vmi->width;
   vga.height = vmi->height;
+  vga.line_compare = vmi->height;
   vga.scan_len = (vmi->width + 3) & ~3;	/* dword aligned */
   vga.text_width = vmi->text_width;
   vga.text_height = vmi->text_height;
@@ -2553,10 +2554,15 @@ void vgaemu_adj_cfg(unsigned what, unsigned msg)
       vga_msg("vgaemu_adj_cfg: vertical_display_end = %d\n", vertical_display_end);
       vga_msg("vgaemu_adj_cfg: vertical_multiplier = %d\n", vertical_multiplier);
       vga_msg("vgaemu_adj_cfg: height = %d\n", height);
+      if (vga.line_compare != vga.crtc.line_compare / vertical_multiplier) {
+        vga.line_compare = vga.crtc.line_compare / vertical_multiplier;
+        dirty_all_video_pages();
+      }
       if (vga.height != height) {
         vga.height = height;
         vga.reconfig.display = 1;
       }
+      if (vga.line_compare == 0) vga.line_compare = vga.height;
       break;
     }
     case CFG_CRTC_WIDTH:
@@ -2591,6 +2597,22 @@ void vgaemu_adj_cfg(unsigned what, unsigned msg)
 	 vga.reconfig.display = 1;
       }
       break;
+    }
+    case CFG_CRTC_LINE_COMPARE:
+    {
+      int vertical_multiplier;
+      vga.crtc.line_compare =
+              vga.crtc.data[0x18] +
+              ((vga.crtc.data[0x7] & 0x10) << (8 - 4)) +
+              ((vga.crtc.data[0x9] & 0x40) << (9 - 6));
+      vertical_multiplier = ((vga.crtc.data[0x9] & 0x1F) +1) <<
+	      ((vga.crtc.data[0x9] & 0x80) >> 7);
+      vga_msg("vgaemu_adj_cfg: line_compare = %d\n", vga.crtc.line_compare);
+      if (vga.line_compare != vga.crtc.line_compare / vertical_multiplier) {
+        vga.line_compare = vga.crtc.line_compare / vertical_multiplier;
+        dirty_all_video_pages();
+      }
+      if (vga.line_compare == 0) vga.line_compare = vga.height;
     }
     default:
       vga_msg("vgaemu_adj_cfg: unknown item %u\n", what);
