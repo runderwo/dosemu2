@@ -1,6 +1,6 @@
 /* 
  * All modifications in this file to the original code are
- * (C) Copyright 1992, ..., 2003 the "DOSEMU-Development-Team".
+ * (C) Copyright 1992, ..., 2004 the "DOSEMU-Development-Team".
  *
  * for details see file COPYING in the DOSEMU distribution
  */
@@ -47,6 +47,9 @@
  *
  * HISTORY:
  * $Log$
+ * Revision 1.2.2.2  2004/01/16 21:48:25  bartoldeman
+ * Happy new year!
+ *
  * Revision 1.2.2.1  2003/09/17 14:40:54  bartoldeman
  * Sync up with CVS HEAD, except for GPM Mouse. This should be 1.2.0rc1
  * except for some doc changes, dosemu.conf layout, RPM, and FreeDOS stuff.
