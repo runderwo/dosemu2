@@ -1,3 +1,100 @@
+2004/01/14 ver 1.2.0rc2 stable pre-release (aka 1.1.99.2)
+	From Stas:
+	- src/base/serial/: ser_defs.h, ser_init.c, ser_irq.c, ser_ports.c:
+	  * Switched serial to async IO 
+	  * Use tcdrain() for non-FIFO data sends to minimize latencies
+	  * Some other small changes to reduce latencies. This allows to use
+	    dosemu's serial port emulation for time-sensitive tasks.
+	- src/: dosext/sound/sound.c, include/sound.h:
+	  * Make SB to really produce the interrupts for MPU-401, not only
+	    to pretend to
+	  * Added some support for undocumented MPU-401 commands 0xAC and
+	    0xAD (stolen from VDMSound)
+	- src/arch/linux/dosext/sound/midid/timid.c:
+	  Really pass the sysexes to timidity, not only pretend to.
+	- src/arch/linux/dosext/sound/linux_sound.c:
+	  Fix the OSS initialisation for SB direct DAC writes.	
+	  Dont overflow the log with the "buffer overflow" messages.
+	- src/: base/mouse/mouse.c, include/mouse.h, emu.c,
+	  Switch the mouse driver over to async IO, fixes bug #852077
+	- doc/EMUfailure.txt, src/doc/HOWTO/EMUfailure.sgml:
+	  updated to tell more about fundamental CPU problems
+	- src/: arch/linux/async/signal.c, base/dev/pic/pic.c,
+	  env/video/miscemu.c: solve problem with miscemu.c wrongly
+	  setting pic_sys_time + some debug print improvements.
+	- src/base/speaker/speaker.c: Allow disabling speaker
+	- configure, configure.ac: Use have_x instead of no_x
+	From Bart:
+	- etc/dosemu.users.example: Comment everything out.
+	- Makefile, README.bindist, dosemu.spec.in, dist/mkbindist,
+	  etc/global.conf, src/arch/linux/Makefile.main: 
+	  * use a safer rm -rf ../tmp (fixes #851514 ; make install
+	    executes in src)
+	  * copy global.conf and dosemu.users to sysconfdir without example
+	    extensions
+	  * remove config.status call from the Makefile. It messes
+	    "prefix" up.
+	  * obsolete /etc/dosemu.conf (etc) unless sysconfdir=/etc;
+	    make install and the rpm install moves them now
+	  * use %config(noreplace) and add missing commands symlink to the rpm.
+	- etc/: dosemu.conf, global.conf: Allow a completely free-from
+	  printer command (but for LPT1 only for now)
+	- etc/global.conf: Fix problems with -F for global.conf
+	- src/arch/linux/mapping/mapshm.c: Added mremap(.,0,..) check for
+	  the 2.6.1 kernel: we can only use mapfile and not mapshm
+	- src/: arch/linux/async/signal.c, arch/linux/async/sigsegv.c,
+	  include/cpu.h: Restore fs and gs in all signal handlers. Fixes
+	  NPTL problems.
+	- src/arch/linux/async/sigsegv.c: Don't always quit if DOSEMU
+	  itself touches protected video memory.  Adjusting protection (as
+	  opposed to emulating) should be harmless -- perhaps a better way
+	  to solve this is to adjust all the memmoves, but on the other
+	  hand letting the CPU do the dirty work isn't all that bad of a
+	  concept. Fixes bug #817088
+	- src/env/video/vgaemu.c: Allow vgaemu_set_text_mode for graphics
+	  modes too. "orbits" needs this.
+	- src/doc/tools/doSgmlTools.pl: Improve openjade detection
+	- default-configure: Also use disable-aspi from default-configure.
+	- configure, configure.ac, dosemu.spec.in, dist/dosemu,
+	  doc/dosemu-HOWTO.txt, src/arch/linux/Makefile.main,
+	  src/base/init/config.c, src/doc/HOWTO/dosemu-HOWTO.sgml:
+	  * Rename enable-aspi to disable-aspi (Clarence suggestion)
+	  * Added --with-slangdir=src/plugin/slang possibility to force
+	    use of the slang plugin without funny workarounds.
+	  * Clean up the rpm spec file in line with the above.
+	  * Set SUDO_UID/GID in the dosemu script to 0 to
+	    allow "sudo dosemu" with full root (unlike dosemu -s)
+	  * Fix secure_option_preparse for sudo runs (it was not secure).
+	- README.bindist, dist/dosemu, etc/global.conf,
+	  man/dosemu.bin.1.in, src/base/init/config.c,
+	  src/base/init/parser.y.in: Add -n option to be able to completely
+	  bypass dosemu.conf and dosemu.users (unless suid).  The $HOME
+	  tarball installation now uses this option by default.
+	- dist/dosemu: Added some desperate attempts to really convince X
+	  to find the font.
+	- src/: base/mouse/mouse.c, env/video/X.c, include/mouse.h:
+	  Fix mouse init problem.
+	- README.bindist, etc/dosemu.conf, etc/global.conf: Add
+	  $_printer_command to be able to solve the CUPS problem without
+	  global.conf.
+	- src/plugin/commands/builtins.c: Use a more helpful message (of
+	  course this is not always applicable but right now the most
+	  likely cause).
+	- doc/NOVELL-HOWTO.txt: Correction about PDIPX/IPXPD.
+	- doc/announce: Add a "what's new" section to the announce file.
+	- src/plugin/term/keyb_slang.c: Update the special keys display at
+	  strategic places (where it was forgotten before); disable ESC-ESC
+	  (conflicts with alt-f1).
+	- dist/dosemu, src/arch/linux/Makefile.main: Use sed+ls instead of
+	  readlink for non-system-wide; use dosemu.bin in the bindir
+	  instead of the first one in $PATH for system wide.
+	- src/doc/README/config: Added note that mapself doesn't work on
+	  Linux kernel 2.2.24 and higher.
+	- src/: dosext/dpmi/dpmi.h, emu-i386/cpu.c, include/cpu.h: Fix DPMI
+	  problems with 2.6.0test6 by no longer hard coding UCODESEL and
+	  UDATASEL -- they changed from 0x23/0x2b to 0x73/0x7b.
+	- etc/global.conf: Change to stop DOSEMU complaining if the libdir
+	  doesn't exist.
 2003/09/28 ver 1.2.0rc1 stable pre-release (aka 1.1.99.1)
 	From Nerijus Baliunas (nerijus@users.sf.net):
 	- doc/README-tech.txt, doc/README.txt, etc/dosemu.conf,
