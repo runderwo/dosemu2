@@ -123,12 +123,12 @@
 	- src/dosext/sound/sound.c: Use only the current DMA channel on
 	  SB16.	 This allows the QV to work. QV is an MPEG4/DivX player for
 	  DOS!
-	From Bart:
 	- src/base/mouse/mouse.c: Enable mouse at startup in case the
 	  program doesn't do that manually.
 	- src/base/async/int.c: hogthreshold adjustment for the mouse code.
 	- src/plugin/kbd_unicode/: Makefile, getfd.c, getfd.h, keymaps.c:
 	  Update the getfd() console detection code with the one from kbd 1.08
+	From Bart:
 	- src/: emu-i386/cputime.c, base/async/int.c, base/bios/int10.c,
 	  base/misc/userhook.c, base/misc/utilities.c, base/mouse/mouse.c,
 	  env/video/X.c, env/video/X.h, include/video.h,
