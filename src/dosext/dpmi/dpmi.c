@@ -122,7 +122,6 @@ struct sigcontext_struct DPMI_pm_stack[DPMI_max_rec_pm_func];
 int DPMI_pm_procedure_running = 0;
 
 char *ldt_buffer=0;
-unsigned short LDT_ALIAS = 0;
 unsigned short KSPACE_LDT_ALIAS = 0;
 
 static char *pm_stack; /* locked protected mode stack */
@@ -133,9 +132,7 @@ static unsigned long dpmi_total_memory; /* total memory  of this session */
 struct DPMIclient_struct DPMIclient[DPMI_MAX_CLIENTS];
 
 unsigned short DPMI_private_data_segment;
-unsigned short PMSTACK_SEL = 0;	/* protected mode stack selector */
 unsigned long PMSTACK_ESP = 0;	/* protected mode stack descriptor */
-unsigned short DPMI_SEL = 0;
 
 struct sigcontext_struct _emu_stack_frame;  /* used to store emulator registers */
 static struct sigcontext_struct *emu_stack_frame = &_emu_stack_frame;
@@ -756,9 +753,9 @@ static inline unsigned short GetNextSelectorIncrementValue(void)
 
 static int SystemSelector(unsigned short selector)
 {
-  if ((((selector) & 0xfffc) == (DPMI_SEL & 0xfffc)) ||
-     (((selector) & 0xfffc ) == (PMSTACK_SEL & 0xfffc)) ||
-     (((selector) & 0xfffc ) == (LDT_ALIAS & 0xfffc)))
+  if ((((selector) & 0xfffc) == (DPMI_CLIENT.DPMI_SEL & 0xfffc)) ||
+     (((selector) & 0xfffc ) == (DPMI_CLIENT.PMSTACK_SEL & 0xfffc)) ||
+     (((selector) & 0xfffc ) == (DPMI_CLIENT.LDT_ALIAS & 0xfffc)))
     return 1;
   return 0;
 }
@@ -1251,7 +1248,7 @@ static void get_ext_API(struct sigcontext_struct *scp)
       {
         if(_LWORD(eax) == 0x168a)
 	  _LO(ax) = 0;
-	_es = DPMI_SEL;
+	_es = DPMI_CLIENT.DPMI_SEL;
 	_edi = DPMI_OFF + HLT_OFF(DPMI_API_extension);
       } else
 #endif
@@ -1536,7 +1533,7 @@ err:
         case 0x1c:	/* ROM BIOS timer tick interrupt */
         case 0x23:	/* DOS Ctrl+C interrupt */
         case 0x24:	/* DOS critical error interrupt */
-	  if ((DPMI_CLIENT.Interrupt_Table[_LO(bx)].selector==DPMI_SEL) &&
+	  if ((DPMI_CLIENT.Interrupt_Table[_LO(bx)].selector==DPMI_CLIENT.DPMI_SEL) &&
 		(DPMI_CLIENT.Interrupt_Table[_LO(bx)].offset==DPMI_OFF + HLT_OFF(DPMI_interrupt) + _LO(bx)))
 #ifdef __linux__
 	    { if (can_revector(_LO(bx))==NO_REVECT)
@@ -1682,14 +1679,14 @@ err:
   case 0x0305:	/* Get State Save/Restore Adresses */
       _LWORD(ebx) = DPMI_SEG;
       _LWORD(ecx) = DPMI_OFF + HLT_OFF(DPMI_save_restore);
-      _LWORD(esi) = DPMI_SEL;
+      _LWORD(esi) = DPMI_CLIENT.DPMI_SEL;
       _edi = DPMI_OFF + HLT_OFF(DPMI_save_restore);
       _LWORD(eax) = 60;		/* size to hold all registers */
     break;
   case 0x0306:	/* Get Raw Mode Switch Adresses */
       _LWORD(ebx) = DPMI_SEG;
       _LWORD(ecx) = DPMI_OFF + HLT_OFF(DPMI_raw_mode_switch);
-      _LWORD(esi) = DPMI_SEL;
+      _LWORD(esi) = DPMI_CLIENT.DPMI_SEL;
       _edi = DPMI_OFF + HLT_OFF(DPMI_raw_mode_switch);
     break;
   case 0x0400:	/* Get Version */
@@ -2046,13 +2043,10 @@ err:
 
 static void quit_dpmi(struct sigcontext_struct *scp, unsigned short errcode)
 {
-  if (in_dpmi == 1) { /* Restore environment, must before FreeDescriptor */
-    if (CURRENT_ENV_SEL)
-      *(unsigned short *)(((char *)(CURRENT_PSP<<4))+0x2c) =
-             (unsigned long)(GetSegmentBaseAddress(CURRENT_ENV_SEL)) >> 4;
-  }
-  else
-    D_printf("DPMI: warning: in_dpmi=%d\n",in_dpmi);
+  /* Restore environment, must before FreeDescriptor */
+  if (DPMI_CLIENT.CURRENT_ENV_SEL)
+      *(unsigned short *)(((char *)(DPMI_CLIENT.CURRENT_PSP<<4))+0x2c) =
+             (unsigned long)(GetSegmentBaseAddress(DPMI_CLIENT.CURRENT_ENV_SEL)) >> 4;
 
   FreeAllDescriptors();
   DPMIfreeAll();
@@ -2155,7 +2149,7 @@ void run_pm_int(int i)
 
   D_printf("DPMI: run_pm_int(0x%02x) called, in_dpmi_dos_int=0x%02x\n",i,in_dpmi_dos_int);
 
-  if (DPMI_CLIENT.Interrupt_Table[i].selector == DPMI_SEL) {
+  if (DPMI_CLIENT.Interrupt_Table[i].selector == DPMI_CLIENT.DPMI_SEL) {
 
     D_printf("DPMI: Calling real mode handler for int 0x%02x\n", i);
 
@@ -2171,8 +2165,8 @@ void run_pm_int(int i)
 
   if (!in_dpmi_pm_stack) {
     D_printf("DPMI: Switching to locked stack\n");
-    CLIENT_PMSTACK_SEL = PMSTACK_SEL;
-    if (DPMI_CLIENT.stack_frame.ss == PMSTACK_SEL)
+    CLIENT_PMSTACK_SEL = DPMI_CLIENT.PMSTACK_SEL;
+    if (DPMI_CLIENT.stack_frame.ss == DPMI_CLIENT.PMSTACK_SEL)
       error("DPMI: run_pm_int: App is working on host\'s PM locked stack, expect troubles!\n");
   }
   else {
@@ -2181,7 +2175,7 @@ void run_pm_int(int i)
     CLIENT_PMSTACK_SEL = DPMI_CLIENT.stack_frame.ss;
   }
 
-  if (DPMI_CLIENT.stack_frame.ss == PMSTACK_SEL || in_dpmi_pm_stack)
+  if (DPMI_CLIENT.stack_frame.ss == DPMI_CLIENT.PMSTACK_SEL || in_dpmi_pm_stack)
     PMSTACK_ESP = client_esp(0);
   else
     PMSTACK_ESP = DPMI_pm_stack_size;
@@ -2217,7 +2211,7 @@ void run_pm_int(int i)
     *(--((unsigned long *) ssp)) = DPMI_CLIENT.stack_frame.eip;
     *(--((unsigned long *) ssp)) = DPMI_CLIENT.stack_frame.eflags;
     *--ssp = (us) 0;
-    *--ssp = DPMI_SEL; 
+    *--ssp = DPMI_CLIENT.DPMI_SEL; 
     *(--((unsigned long *) ssp)) = DPMI_OFF + HLT_OFF(DPMI_return_from_pm);
     PMSTACK_ESP -= 36;
   } else {
@@ -2228,7 +2222,7 @@ void run_pm_int(int i)
     *--ssp = DPMI_CLIENT.stack_frame.cs; 
     *--ssp = (unsigned short) DPMI_CLIENT.stack_frame.eip;
     *--ssp = (unsigned short) DPMI_CLIENT.stack_frame.eflags;
-    *--ssp = DPMI_SEL; 
+    *--ssp = DPMI_CLIENT.DPMI_SEL; 
     *--ssp = DPMI_OFF + HLT_OFF(DPMI_return_from_pm);
     PMSTACK_ESP -= 18;
   }
@@ -2494,8 +2488,10 @@ static void dpmi_init(void)
     flush_log();
 
     pm_block_handle_used = 1;
-    USER_DTA_SEL = 0;		/* from msdos.h */
-    USER_PSP_SEL = 0;		/* from msdos.h */
+  }
+
+  DPMI_CLIENT.USER_DTA_SEL = 0;		/* from msdos.h */
+  DPMI_CLIENT.USER_PSP_SEL = 0;		/* from msdos.h */
 /*
  * DANG_BEGIN_NEWIDEA
  * Simulate Local Descriptor Table for MS-Windows 3.1
@@ -2505,33 +2501,39 @@ static void dpmi_init(void)
  * DANG_END_NEWIDEA
  */
 
-    if (!(LDT_ALIAS = AllocateDescriptors(1))) goto err;
-    if (SetSelector(LDT_ALIAS, (unsigned long) ldt_buffer, MAX_SELECTORS*LDT_ENTRY_SIZE-1, DPMI_CLIENT.is_32,
-                  MODIFY_LDT_CONTENTS_DATA, 1, 0, 0, 0)) goto err;
-    
-    if (!(PMSTACK_SEL = AllocateDescriptors(1))) goto err;
-    if (SetSelector(PMSTACK_SEL, (unsigned long) pm_stack, DPMI_pm_stack_size-1, DPMI_CLIENT.is_32,
-                  MODIFY_LDT_CONTENTS_DATA, 0, 0, 0, 0)) goto err;
-
-    if (!(DPMI_SEL = AllocateDescriptors(1))) goto err;
-    if (SetSelector(DPMI_SEL, (unsigned long) (DPMI_SEG << 4), 0xffff, DPMI_CLIENT.is_32,
-                  MODIFY_LDT_CONTENTS_CODE, 0, 0, 0, 0)) goto err;
-
-    dpmi_eflags = IF;
-    
-  }
+  dpmi_eflags = IF;
 
   if (in_dpmi > 1)
     inherit_idt = DPMI_CLIENT.is_32 == PREV_DPMI_CLIENT.is_32;
   else
     inherit_idt = 0;
+
+  if (!inherit_idt) {
+    /* If we dont inherit IDT, we have to create a new aliases! */
+    if (!(DPMI_CLIENT.LDT_ALIAS = AllocateDescriptors(1))) goto err;
+    if (SetSelector(DPMI_CLIENT.LDT_ALIAS, (unsigned long) ldt_buffer, MAX_SELECTORS*LDT_ENTRY_SIZE-1, DPMI_CLIENT.is_32,
+                  MODIFY_LDT_CONTENTS_DATA, 1, 0, 0, 0)) goto err;
+    
+    if (!(DPMI_CLIENT.PMSTACK_SEL = AllocateDescriptors(1))) goto err;
+    if (SetSelector(DPMI_CLIENT.PMSTACK_SEL, (unsigned long) pm_stack, DPMI_pm_stack_size-1, DPMI_CLIENT.is_32,
+                  MODIFY_LDT_CONTENTS_DATA, 0, 0, 0, 0)) goto err;
+
+    if (!(DPMI_CLIENT.DPMI_SEL = AllocateDescriptors(1))) goto err;
+    if (SetSelector(DPMI_CLIENT.DPMI_SEL, (unsigned long) (DPMI_SEG << 4), 0xffff, DPMI_CLIENT.is_32,
+                  MODIFY_LDT_CONTENTS_CODE, 0, 0, 0, 0)) goto err;
+  } else {
+    /* Otherwise inherit the sysdesc aliases at first */
+    DPMI_CLIENT.LDT_ALIAS = PREV_DPMI_CLIENT.LDT_ALIAS;
+    DPMI_CLIENT.PMSTACK_SEL = PREV_DPMI_CLIENT.PMSTACK_SEL;
+    DPMI_CLIENT.DPMI_SEL = PREV_DPMI_CLIENT.DPMI_SEL;
+  }
   for (i=0;i<0x100;i++) {
     if (inherit_idt) {
       DPMI_CLIENT.Interrupt_Table[i].offset = PREV_DPMI_CLIENT.Interrupt_Table[i].offset;
       DPMI_CLIENT.Interrupt_Table[i].selector = PREV_DPMI_CLIENT.Interrupt_Table[i].selector;
     } else {
       DPMI_CLIENT.Interrupt_Table[i].offset = DPMI_OFF + HLT_OFF(DPMI_interrupt) + i;
-      DPMI_CLIENT.Interrupt_Table[i].selector = DPMI_SEL;
+      DPMI_CLIENT.Interrupt_Table[i].selector = DPMI_CLIENT.DPMI_SEL;
     }
   }
   for (i=0;i<0x20;i++) {
@@ -2540,7 +2542,7 @@ static void dpmi_init(void)
       DPMI_CLIENT.Exception_Table[i].selector = PREV_DPMI_CLIENT.Exception_Table[i].selector;
     } else {
       DPMI_CLIENT.Exception_Table[i].offset = DPMI_OFF + HLT_OFF(DPMI_exception) + i;
-      DPMI_CLIENT.Exception_Table[i].selector = DPMI_SEL;
+      DPMI_CLIENT.Exception_Table[i].selector = DPMI_CLIENT.DPMI_SEL;
     }
   }
 
@@ -2616,17 +2618,17 @@ static void dpmi_init(void)
 		DPMI_CLIENT.is_32, MODIFY_LDT_CONTENTS_DATA, 0, 0, 0, 0)) goto err;
 	*(unsigned short *)(((char *)(psp<<4))+0x2c) = envpd;
 
-        CURRENT_ENV_SEL = envpd;
+        DPMI_CLIENT.CURRENT_ENV_SEL = envpd;
 	D_printf("DPMI: env segment %#x converted to descriptor %#x\n",
 		envp,envpd);
      } else
-          CURRENT_ENV_SEL = 0;
-     CURRENT_PSP = psp;
+          DPMI_CLIENT.CURRENT_ENV_SEL = 0;
+     DPMI_CLIENT.CURRENT_PSP = psp;
   }
 
   if (debug_level('M')) {
     print_ldt();
-    D_printf("LDT_ALIAS=%x DPMI_SEL=%x CS=%x DS=%x SS=%x ES=%x\n", LDT_ALIAS, DPMI_SEL, CS, DS, SS, ES);
+    D_printf("LDT_ALIAS=%x DPMI_SEL=%x CS=%x DS=%x SS=%x ES=%x\n", DPMI_CLIENT.LDT_ALIAS, DPMI_CLIENT.DPMI_SEL, CS, DS, SS, ES);
   }
 
   REG(esp) += 6;
@@ -2816,15 +2818,15 @@ static void do_cpu_exception(struct sigcontext_struct *scp)
   set_debug_level('M', dd);
 #endif
   
-  if (DPMI_CLIENT.Exception_Table[_trapno].selector == DPMI_SEL) {
+  if (DPMI_CLIENT.Exception_Table[_trapno].selector == DPMI_CLIENT.DPMI_SEL) {
     do_default_cpu_exception(scp, _trapno);
     return;
   }
 
   if (!in_dpmi_pm_stack) {
     D_printf("DPMI: Switching to locked stack\n");
-    CLIENT_PMSTACK_SEL = PMSTACK_SEL;
-    if (_ss == PMSTACK_SEL)
+    CLIENT_PMSTACK_SEL = DPMI_CLIENT.PMSTACK_SEL;
+    if (_ss == DPMI_CLIENT.PMSTACK_SEL)
       error("DPMI: do_cpu_exception: App is working on host\'s PM locked stack, expect troubles!\n");
   }
   else {
@@ -2833,7 +2835,7 @@ static void do_cpu_exception(struct sigcontext_struct *scp)
     CLIENT_PMSTACK_SEL = _ss;
   }
 
-  if (_ss == PMSTACK_SEL || in_dpmi_pm_stack)
+  if (_ss == DPMI_CLIENT.PMSTACK_SEL || in_dpmi_pm_stack)
     PMSTACK_ESP = client_esp(scp);
   else
     PMSTACK_ESP = DPMI_pm_stack_size;
@@ -2856,7 +2858,7 @@ static void do_cpu_exception(struct sigcontext_struct *scp)
     *(--((unsigned long *) ssp)) = _eip;
     *(--((unsigned long *) ssp)) = _err;
     *--ssp = (us) 0;
-    *--ssp = DPMI_SEL; 
+    *--ssp = DPMI_CLIENT.DPMI_SEL; 
     *(--((unsigned long *) ssp)) = DPMI_OFF + HLT_OFF(DPMI_return_from_exception);
     PMSTACK_ESP -= 32;
   } else {
@@ -2866,7 +2868,7 @@ static void do_cpu_exception(struct sigcontext_struct *scp)
     *--ssp = _cs; 
     *--ssp = (unsigned short) _eip;
     *--ssp = (unsigned short) _err;
-    *--ssp = DPMI_SEL; 
+    *--ssp = DPMI_CLIENT.DPMI_SEL; 
     *--ssp = DPMI_OFF + HLT_OFF(DPMI_return_from_exception);
     PMSTACK_ESP -= 16;
   }
@@ -3018,7 +3020,7 @@ if ((_ss & 4) == 4) {
 #endif
       /* Bypass the int instruction */
       _eip += 2;
-      if (DPMI_CLIENT.Interrupt_Table[*csp].selector == DPMI_SEL)
+      if (DPMI_CLIENT.Interrupt_Table[*csp].selector == DPMI_CLIENT.DPMI_SEL)
 	do_dpmi_int(scp, *csp);
       else {
         us cs2 = _cs;
@@ -3056,7 +3058,7 @@ if ((_ss & 4) == 4) {
 
     case 0xf4:			/* hlt */
       _eip += 1;
-      if (_cs==DPMI_SEL) {
+      if (_cs==DPMI_CLIENT.DPMI_SEL) {
 	if (_eip==DPMI_OFF+1+HLT_OFF(DPMI_raw_mode_switch)) {
 	  D_printf("DPMI: switching from protected to real mode\n");
 	  REG(ds) = (long) _LWORD(eax);
@@ -3109,7 +3111,7 @@ if ((_ss & 4) == 4) {
         } else if (_eip==DPMI_OFF+1+HLT_OFF(DPMI_API_extension)) {
           D_printf("DPMI: extension API call: 0x%04x\n", _LWORD(eax));
           if (_LWORD(eax) == 0x0100) {
-            _eax = LDT_ALIAS;  /* simulate direct ldt access */
+            _eax = DPMI_CLIENT.LDT_ALIAS;  /* simulate direct ldt access */
 	    _eflags &= ~CF;
 	    in_win31 = 1;
 	  } else
@@ -3118,7 +3120,7 @@ if ((_ss & 4) == 4) {
         } else if (_eip==DPMI_OFF+1+HLT_OFF(DPMI_return_from_pm)) {
 	  if (in_dpmi_pm_stack) {
 	    in_dpmi_pm_stack--;
-	    if (!in_dpmi_pm_stack && _ss != PMSTACK_SEL) {
+	    if (!in_dpmi_pm_stack && _ss != DPMI_CLIENT.PMSTACK_SEL) {
 	      error("DPMI: Client's PM Stack corrupted during interrupt handling!\n");
 //	      leavedos(91);
 	    }
@@ -3190,7 +3192,7 @@ if ((_ss & 4) == 4) {
 	  unsigned long saved_esp = _esp;
 	  if (in_dpmi_pm_stack) {
 	    in_dpmi_pm_stack--;
-	    if (!in_dpmi_pm_stack && _ss != PMSTACK_SEL) {
+	    if (!in_dpmi_pm_stack && _ss != DPMI_CLIENT.PMSTACK_SEL) {
 	      error("DPMI: Client's PM Stack corrupted during exception handling!\n");
 //	      leavedos(91);
 	    }
@@ -3235,7 +3237,7 @@ if ((_ss & 4) == 4) {
 
 	  if (in_dpmi_pm_stack) {
 	    in_dpmi_pm_stack--;
-	    if (!in_dpmi_pm_stack && _ss != PMSTACK_SEL) {
+	    if (!in_dpmi_pm_stack && _ss != DPMI_CLIENT.PMSTACK_SEL) {
 	      error("DPMI: Client's PM Stack corrupted during the realmode callback!\n");
 //	      leavedos(91);
 	    }
@@ -3268,7 +3270,7 @@ if ((_ss & 4) == 4) {
 
 	  if (in_dpmi_pm_stack) {
 	    in_dpmi_pm_stack--;
-	    if (!in_dpmi_pm_stack && _ss != PMSTACK_SEL) {
+	    if (!in_dpmi_pm_stack && _ss != DPMI_CLIENT.PMSTACK_SEL) {
 	      error("DPMI: Client's PM Stack corrupted during mouse callback!\n");
 //	      leavedos(91);
 	    }
@@ -3718,8 +3720,8 @@ done:
 
     if (!in_dpmi_pm_stack) {
       D_printf("DPMI: Switching to locked stack\n");
-      CLIENT_PMSTACK_SEL = PMSTACK_SEL;
-      if (DPMI_CLIENT.stack_frame.ss == PMSTACK_SEL)
+      CLIENT_PMSTACK_SEL = DPMI_CLIENT.PMSTACK_SEL;
+      if (DPMI_CLIENT.stack_frame.ss == DPMI_CLIENT.PMSTACK_SEL)
         error("DPMI: rm_callback: App is working on host\'s PM locked stack, expect troubles!\n");
     }
     else {
@@ -3728,7 +3730,7 @@ done:
       CLIENT_PMSTACK_SEL = DPMI_CLIENT.stack_frame.ss;
     }
 
-    if (DPMI_CLIENT.stack_frame.ss == PMSTACK_SEL || in_dpmi_pm_stack)
+    if (DPMI_CLIENT.stack_frame.ss == DPMI_CLIENT.PMSTACK_SEL || in_dpmi_pm_stack)
       PMSTACK_ESP = client_esp(0);
     else
       PMSTACK_ESP = DPMI_pm_stack_size;
@@ -3748,12 +3750,12 @@ done:
     if (DPMI_CLIENT.is_32) {
 	*(--((unsigned long *) ssp)) = DPMI_CLIENT.stack_frame.eflags;
 	*--ssp = (us) 0;
-	*--ssp = DPMI_SEL; 
+	*--ssp = DPMI_CLIENT.DPMI_SEL; 
 	*(--((unsigned long *) ssp)) = DPMI_OFF + HLT_OFF(DPMI_return_from_rm_callback);
 	PMSTACK_ESP -= 12;
     } else {
 	*--ssp = (unsigned short) DPMI_CLIENT.stack_frame.eflags;
-	*--ssp = DPMI_SEL; 
+	*--ssp = DPMI_CLIENT.DPMI_SEL; 
 	*--ssp = DPMI_OFF + HLT_OFF(DPMI_return_from_rm_callback);
 	PMSTACK_ESP -= 6;
     }
@@ -3800,8 +3802,8 @@ done:
 
     if (!in_dpmi_pm_stack) {
       D_printf("DPMI: Switching to locked stack\n");
-      CLIENT_PMSTACK_SEL = PMSTACK_SEL;
-      if (DPMI_CLIENT.stack_frame.ss == PMSTACK_SEL)
+      CLIENT_PMSTACK_SEL = DPMI_CLIENT.PMSTACK_SEL;
+      if (DPMI_CLIENT.stack_frame.ss == DPMI_CLIENT.PMSTACK_SEL)
         error("DPMI: run_pm_mouse: App is working on host\'s PM locked stack, expect troubles!\n");
     }
     else {
@@ -3810,7 +3812,7 @@ done:
       CLIENT_PMSTACK_SEL = DPMI_CLIENT.stack_frame.ss;
     }
 
-    if (DPMI_CLIENT.stack_frame.ss == PMSTACK_SEL || in_dpmi_pm_stack)
+    if (DPMI_CLIENT.stack_frame.ss == DPMI_CLIENT.PMSTACK_SEL || in_dpmi_pm_stack)
       PMSTACK_ESP = client_esp(0);
     else
       PMSTACK_ESP = DPMI_pm_stack_size;
@@ -3825,12 +3827,12 @@ done:
 
     if (DPMI_CLIENT.is_32) {
 	*--ssp = (us) 0;
-	*--ssp = DPMI_SEL; 
+	*--ssp = DPMI_CLIENT.DPMI_SEL; 
 	*(--((unsigned long *) ssp)) =
 	     DPMI_OFF + HLT_OFF(DPMI_return_from_mouse_callback);
 	PMSTACK_ESP -= 8;
     } else {
-	*--ssp = DPMI_SEL; 
+	*--ssp = DPMI_CLIENT.DPMI_SEL; 
 	*--ssp = DPMI_OFF + HLT_OFF(DPMI_return_from_mouse_callback);
 	PMSTACK_ESP -= 4;
     }
