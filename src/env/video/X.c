@@ -426,6 +426,7 @@ static Cursor X_standard_cursor;
 static Cursor X_mouse_nocursor;
 static int snap_X = 0;
 static int mouse_cursor_visible = 0;
+static int mouse_really_left_window = 1;
 #endif
 
 static GC gc, fullscreengc, normalgc;
@@ -582,11 +583,6 @@ static void start_extend_selection(int, int);
 static void save_selection_data(void);
 static void end_selection(void);
 static void send_selection(Time, Window, Atom, Atom);
-#endif
-
-#if USE_SCROLL_QUEUE
-static void X_scroll(int, int, int, int, int, Bit8u);
-static void do_scroll(void);
 #endif
 
 void kdos_recv_msg(unsigned char *);
@@ -1492,9 +1488,10 @@ void X_set_mouse_cursor(int yes, int mx, int my, int x_range, int y_range)
 			else
 				return;
 		}
-		XWarpPointer(display, None, mainwindow, 0, 0, 0, 0,
-			shift_x + (w_x_res * mx)/x_range,
-                        shift_y + (w_y_res * my)/y_range);
+		if (!mouse_really_left_window)
+			XWarpPointer(display, None, mainwindow, 0, 0, 0, 0,
+				     shift_x + (w_x_res * mx)/x_range,
+				     shift_y + (w_y_res * my)/y_range);
 	}
 #endif /* CONFIG_X_MOUSE */
 }
@@ -1568,7 +1565,6 @@ static void toggle_fullscreen_mode(void)
 void X_handle_events()
 {
    static int busy = 0;
-   static int mouse_really_left_window = 1;
    XEvent e;
    unsigned resize_width = w_x_res, resize_height = w_y_res, resize_event = 0;
 
@@ -2582,7 +2578,7 @@ int X_setmode(int mode, int text_width, int text_height, int init_vga)
     veut.max_max_len = 0;
     veut.max_len = 0;
     veut.display_start = 0;
-    veut.display_end = vga.scan_len * vga.height;
+    veut.display_end = vga.scan_len * vga.line_compare;
     veut.update_gran = 0;
     veut.update_pos = veut.display_start;
 
@@ -2661,7 +2657,7 @@ static void X_modify_mode()
   }
 
   veut.display_start = vga.display_start;
-  veut.display_end = veut.display_start + vga.scan_len * vga.height;
+  veut.display_end = veut.display_start + vga.scan_len * vga.line_compare;
 
   if(vga.reconfig.mem || vga.reconfig.display) {
     x_msg("X_modify_mode: failed to modify current graphics mode\n");
@@ -2769,8 +2765,8 @@ static void X_vidmode(int w, int h, int *new_width, int *new_height)
     shift_x = (nw - w_x_res)/2;
     shift_y = (nh - w_y_res)/2;
   }
-  
-  if (!grab_active && (mx != 0 || my != 0))
+
+  if (!grab_active && (mx != 0 || my != 0) && !mouse_really_left_window)
     XWarpPointer(display, None, mainwindow, 0, 0, 0, 0,
                  mx + shift_x, my + shift_y);
   *new_width = nw;
@@ -2785,12 +2781,10 @@ void X_reset_redraw_text_screen()
   if(!is_mapped) return;
 
   prev_cursor_shape = NO_CURSOR; redraw_cursor();
-  clear_scroll_queue();
 
   XFlush(display);
 
   MEMCPY_2UNIX(prev_screen, screen_adr, co * li * 2);
-  clear_scroll_queue();
 }
 
 
@@ -2903,10 +2897,6 @@ int X_update_text_screen()
 
   refresh_palette();
 
-#if USE_SCROLL_QUEUE
-  do_scroll();
-#endif
-  
   /* The following determines how many lines it should scan at once,
    * since this routine is being called by sig_alrm.  If the entire
    * screen changes, it often incurs considerable delay when this
@@ -3048,13 +3038,38 @@ chk_cursor:
 /*
  * Update the graphics screen.
  */
-int X_update_graphics_screen()
+static int X_update_graphics_loop(int update_offset)
 {
   RectArea ra;
   int update_ret;
 #ifdef DEBUG_SHOW_UPDATE_AREA
   static int dsua_fg_color = 0;
 #endif		
+
+  while((update_ret = vga_emu_update(&veut)) > 0) {
+    remap_obj.src_image = veut.base + veut.display_start - update_offset;
+    ra = remap_obj.remap_mem(&remap_obj, update_offset + veut.update_start -
+                             veut.display_start, veut.update_len);
+
+#ifdef DEBUG_SHOW_UPDATE_AREA
+    XSetForeground(display, gc, dsua_fg_color++);
+    XFillRectangle(display, mainwindow, gc, ra.x, ra.y, ra.width, ra.height);
+    XSync(display, False);
+#endif
+
+    put_ximage(ra.x, ra.y, ra.x, ra.y, ra.width, ra.height);
+
+    x_deb("X_update_graphics_screen: func = %s, display_start = 0x%04x, write_plane = %d, start %d, len %u, win (%d,%d),(%d,%d)\n",
+      remap_obj.remap_func_name, vga.display_start, vga.mem.write_plane,
+      veut.update_start, veut.update_len, ra.x, ra.y, ra.width, ra.height
+    );
+  }
+  return update_ret;
+}
+
+int X_update_graphics_screen()
+{
+  int update_ret;
 
   if(!is_mapped) return 0;		/* no need to do anything... */
 
@@ -3064,7 +3079,7 @@ int X_update_graphics_screen()
 
   if(vga.display_start != veut.display_start) {
     veut.display_start = vga.display_start;
-    veut.display_end = veut.display_start + vga.scan_len * vga.height;
+    veut.display_end = veut.display_start + vga.scan_len * vga.line_compare;
     dirty_all_video_pages();
   }
 
@@ -3081,22 +3096,18 @@ int X_update_graphics_screen()
 
   veut.max_len = veut.max_max_len;
 
-  while((update_ret = vga_emu_update(&veut)) > 0) {
-    remap_obj.src_image = veut.base + veut.display_start;
-    ra = remap_obj.remap_mem(&remap_obj, veut.update_start - veut.display_start, veut.update_len);
+  update_ret = X_update_graphics_loop(0);
 
-#ifdef DEBUG_SHOW_UPDATE_AREA
-    XSetForeground(display, gc, dsua_fg_color++);
-    XFillRectangle(display, mainwindow, gc, ra.x, ra.y, ra.width, ra.height);
-    XSync(display, False);
-#endif
+  if (vga.line_compare < vga.height) {
+          
+    veut.display_start = 0;
+    veut.display_end = vga.scan_len * (vga.height - vga.line_compare);
+    veut.max_len = veut.max_max_len;
 
-    put_ximage(ra.x, ra.y, ra.x, ra.y, ra.width, ra.height);
+    update_ret = X_update_graphics_loop(vga.scan_len * vga.line_compare);
 
-    x_deb("X_update_graphics_screen: func = %s, display_start = 0x%04x, write_plane = %d, start %d, len %u, win (%d,%d),(%d,%d)\n",
-      remap_obj.remap_func_name, vga.display_start, vga.mem.write_plane,
-      veut.update_start, veut.update_len, ra.x, ra.y, ra.width, ra.height
-    );
+    veut.display_start = vga.display_start;
+    veut.display_end = veut.display_start + vga.scan_len * vga.line_compare;
   }
 
   return update_ret < 0 ? 2 : 1;
@@ -3779,83 +3790,6 @@ void send_selection(Time time, Window requestor, Atom target, Atom property)
 }
 
 #endif /* CONFIG_X_SELECTION */
-
-
-#if USE_SCROLL_QUEUE
-#if 0
-#define Bit16u us
-#define Boolean boolean
-#endif
-
-#error X does not do scroll queueing
-  
-/* XCopyArea can't be used if the window is obscured and backing store
- * isn't used!
- */
-void X_scroll(int x, int y, int width, int height, int n, Bit8u attr)
-{
-  x*=font_width;
-  y*=font_height;
-  width*=font_width;
-  height*=font_height;
-  n*=font_height;
-  
-  XSetForeground(display,gc,text_colors[attr>>4]);
-  
-  if (n > 0) 
-    {       /* scroll up */
-      if (n>=height) 
-	{
-        n=height;
-     }
-      else 
-	{
-        height-=n;
-	  XCopyArea(display,mainwindow,mainwindow,gc,x,y+n,width,height,x,y);
-     }
-     /*
-      XFillRectangle(display,mainwindow,gc,x,y+height,width,n);
-     */
-  }
-  else if (n < 0) 
-    {  /* scroll down */
-      if (-n>=height) 
-	{
-        n=-height;
-     }
-      else 
-	{
-        height+=n;
-	  XCopyArea(display,mainwindow,mainwindow,gc,x,y,width,height,x,y-n);
-     }
-     /*
-      XFillRectangle(display,mainwindow,gc,x,y,width,-n);
-     */
-  }
-}
-
-
-/* Process the scroll queue */
-static void do_scroll(void) 
-{
-   struct scroll_entry *s;
-
-   X_printf("X: do_scroll\n");
-  while(s=get_scroll_queue()) 
-    {
-      if (s->n!=0) 
-	{
-         X_scroll(s->x0,s->y0,s->x1-s->x0+1,s->y1-s->y0+1,s->n,s->attr);
-         Scroll(prev_screen,s->x0,s->y0,s->x1,s->y1,s->n,0xff);
-      if ((prev_cursor_col >= s->x0) && (prev_cursor_col <= s->x1) &&
-        (prev_cursor_row >= s->y0) && (prev_cursor_row <= s->y1))
-         {
-        prev_cursor_shape = NO_CURSOR;  /* Cursor was overwritten. */
-         }
-      }
-   }
-}
-#endif   /* USE_SCROLL_QUEUE */
 
 
 /*

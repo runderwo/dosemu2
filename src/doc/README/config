@@ -473,19 +473,10 @@ option (look at the man page for details).
 </sect3>
 
 <sect3>
-<title>Basic emulaton settings</title>
+<title>Basic emulation settings</title>
 
 <para>
-To enable INT08 type timer interrupts set the below on or off
-
-<screen>
-  $_timint = (on)
-</screen>
-
-</para>
-
-<para>
-Wether a numeric processor should be shown to the DOS space
+Whether a numeric processor should be shown to the DOS space
 
 <screen>
   $_mathco = (on)
@@ -1257,7 +1248,7 @@ $_joy_dos_max = (150)	  # avoid setting this to > 250
 $_joy_granularity = (1)   # the higher, the less sensitive - 
 			  # useful if you have a wobbly joystick
                           #
-$_joy_latency = (0)       # delay between nonblocking linux joystick reads
+$_joy_latency = (1)       # delay between nonblocking linux joystick reads
                           # increases performance if >0 and processor>=Pentium
                           # recommended: 1-50ms or 0 if unsure
 </screen>

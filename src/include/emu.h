@@ -122,6 +122,7 @@ EXTERN void loopstep_run_vm86(void);
 EXTERN void vm86_GP_fault(void);
 
 EXTERN void do_call_back(Bit32u codefarptr);
+EXTERN void do_intr_call_back(int intno, int inter);
 
 #define NOWAIT  0
 #define WAIT    1
@@ -213,7 +214,6 @@ typedef struct vesamode_type_struct {
        /* for video */
        boolean console;
        boolean console_video;
-       boolean graphics;
        boolean vga;
        boolean X;
        u_short cardtype;
@@ -269,7 +269,6 @@ typedef struct vesamode_type_struct {
        boolean dosbanner;
        boolean emuretrace;
        boolean rdtsc;
-       boolean timers;
        boolean mouse_flag;
        boolean mapped_bios;	/* video BIOS */
        char *vbios_file;	/* loaded VBIOS file */
@@ -350,6 +349,13 @@ typedef struct vesamode_type_struct {
        char *sb_dsp;
        char *sb_mixer;
        uint16_t mpu401_base;
+       char *sound_driver;
+       /* OSS-specific options */
+       int oss_min_frags;
+       int oss_max_frags;
+       int oss_stalled_frags;
+       int oss_do_post;
+       int oss_min_extra_frags;
 
        /* joystick */
        char *joy_device[2];
