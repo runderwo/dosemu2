@@ -20,10 +20,8 @@
 #include "keymaps.h"
 #include "keyb_clients.h"
 #include "keynum.h"
+#include "getfd.h"
 
-static int is_a_console(int);
-static int open_a_console(char *);
-static int getfd(void);
 static int read_kbd_table(struct keytable_entry *);
 
 
@@ -1296,7 +1294,7 @@ CONST t_keysym key_map_hu[] =
 CONST t_keysym shift_map_hu[] =
 {
   U_VOID, 27, '\'', '"', '+', '!', '%', '/',
-  '=', '(', ')', 0xef99, 0xef9a, '\'', 127, 9,
+  '=', '(', ')', 0xef99, 0xef9a, 224, 127, 9,
   'Q', 'W', 'E', 'R', 'T', 'Z', 'U', 'I',
   'O', 'P', 0xef8a, 0xefe9, 13, U_VOID, 'A', 'S',
   'D', 'F', 'G', 'H', 'J', 'K', 'L', 0xef90,
@@ -1890,9 +1888,9 @@ CONST t_keysym ctrl_map_ru[] =
 
 CONST t_keysym key_map_tr[] =	{
 	U_VOID,27,'1','2','3','4','5','6','7','8','9','0','*','-',127,9, 
-	'q','w','e','r','t','y','u',141,'o','p',167,129,13,U_VOID,
-	'a','s','d','f','g','h','j','k','l',159,'i',130,U_VOID,44,
-	'z','x','c','v','b','n','m',148,135,'.',U_VOID,
+	'q','w','e','r','t','y','u',0x131,'o','p',0x11f,0xfc,13,U_VOID,
+	'a','s','d','f','g','h','j','k','l',0x15f,'i',0xe9,U_VOID,44,
+	'z','x','c','v','b','n','m',0xf6,0xe7,'.',U_VOID,
 	'*',U_VOID,' ',U_VOID,U_VOID,U_VOID,U_VOID,U_VOID,U_VOID, 
 	U_VOID,U_VOID,U_VOID,U_VOID,U_VOID,U_VOID,U_VOID,U_VOID,U_VOID,
 	U_VOID,'-',U_VOID,U_VOID,U_VOID,'+',U_VOID,
@@ -1903,9 +1901,9 @@ CONST t_keysym key_map_tr[] =	{
 CONST t_keysym shift_map_tr[] =
 {
      U_VOID,27,'!','\'','^','+','%','&','/','(',')','=','?','_',127,9, 
-     'Q','W','E','R','T','Y','U','I','O','P',166,154,13,U_VOID,
-		 'A','S','D','F','G','H','J','K','L',158,152,34,U_VOID,';',
-		 'Z','X','C','V','B','N','M',153,128,':',U_VOID,
+     'Q','W','E','R','T','Y','U','I','O','P',0x11e,0xdc,13,U_VOID,
+		 'A','S','D','F','G','H','J','K','L',0x15e,0x130,34,U_VOID,';',
+		 'Z','X','C','V','B','N','M',0xd6,0xc7,':',U_VOID,
 		 '*',U_VOID,' ',U_VOID,U_VOID,U_VOID,U_VOID,U_VOID,U_VOID,
      U_VOID,U_VOID,U_VOID,U_VOID,U_VOID,U_VOID,U_VOID,U_VOID,
 		 U_VOID,U_VOID,'-',U_VOID,U_VOID,U_VOID,'+',U_VOID,
@@ -2098,43 +2096,6 @@ struct keytable_entry keytable_list[] = {
   {0},
   {0}
 };
-
-
-/*
- * Look for a console. This is based on code in getfd.c from the kbd-0.99 package
- * (see loadkeys(1)).
- */
-
-static int is_a_console(int fd)
-{
-  char arg = 0;
-
-  return ioctl(fd, KDGKBTYPE, &arg) == 0 && (arg == KB_101 || arg == KB_84);
-}
-
-static int open_a_console(char *fnam)
-{
-  int fd;
-
-  fd = open(fnam, O_RDONLY);
-  if(fd < 0 && errno == EACCES) fd = open(fnam, O_WRONLY);
-  if(fd < 0 || ! is_a_console(fd)) return -1;
-
-  return fd;
-}
-
-static int getfd()
-{
-  int fd, i;
-  char *t[] = { "", "", "", "/dev/tty", "/dev/tty0", "/dev/console" };
-  
-  for(i = 0; i < sizeof t / sizeof *t; i++) {
-    if(!*t[i] && is_a_console(i)) return i;
-    if(*t[i] && (fd = open_a_console(t[i])) >= 0) return fd;
-  }
-
-  return -1;
-}
 
 #if 0
 static char* pretty_keysym(t_keysym d)
@@ -2408,7 +2369,8 @@ static int read_kbd_table(struct keytable_entry *kt)
 	
 	fd = getfd();
 	if(fd < 0) {
-		fprintf(stderr, "no console\n");
+		error("Unable to open console to evaluate the keyboard map.\n"
+		      "Please specify your keyboard map explicitly via the $_layout option\n");
 		return 1;
 	}
 	

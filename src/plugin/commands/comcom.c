@@ -20,14 +20,12 @@
 #include <ctype.h>
 #include <stdarg.h>
 
-#ifdef X_SUPPORT
-#include "../../env/video/X.h"
-#endif
 #include "emu.h"
 #include "memory.h"
 #include "bios.h"
 #include "video.h"	/* for CARD_NONE */
 #include "doshelpers.h"
+#include "utilities.h"
 #include "../coopthreads/coopthreads.h"
 
 #include "comcom.h"
@@ -2522,7 +2520,7 @@ static int cmd_set(int argc, char **argv)
 		return DOS_EINVAL;
 	}
 	*p = 0;
-	if (!com_msetenv(buf, p+1, 1)) return 0;
+	if (!com_msetenv(buf, p+1, _psp)) return 0;
 	return DOS_ENOMEM;
 }
 
@@ -2535,7 +2533,7 @@ static int cmd_path(int argc, char **argv)
 		com_printf("%s\n", p ? p : "PATH not set");
 		return 0;
 	}
-	if (!com_msetenv("PATH", argv[1], 1)) return 0;
+	if (!com_msetenv("PATH", argv[1], _psp)) return 0;
 	return DOS_ENOMEM;
 }
 
@@ -2544,7 +2542,7 @@ static int cmd_prompt(int argc, char **argv)
 	char *p = argv[1];
 
 	if (!argv[1]) p = "";
-	if (!com_msetenv("PROMPT", argv[1], 1)) return 0;
+	if (!com_msetenv("PROMPT", argv[1], _psp)) return 0;
 	return DOS_ENOMEM;
 }
 
@@ -3081,30 +3079,29 @@ static int dopath_exec(int argc, char **argv)
 	ret = do_internal_command(argc, argv);
 	if (ret == -2) {
 	
-#ifdef X_SUPPORT
 		/* for the currently running app name (if any) */
-		char saved_title_appname [X_TITLE_APPNAME_MAXLEN];
+		char saved_title_appname [TITLE_APPNAME_MAXLEN];
 
 		/* shows currently running program in X window title */
-		if (config.X)
+		if (Video->change_config)
 		{
 			int i;
 			
 			/* for the new app that will be run */
-			char appname [X_TITLE_APPNAME_MAXLEN];
+			char appname [TITLE_APPNAME_MAXLEN];
 			int appname_len;
 			
 			/* save name of running app */
-			snprintf (saved_title_appname, X_TITLE_APPNAME_MAXLEN, "%s", X_title_appname);
+			Video->change_config (GET_TITLE_APPNAME, saved_title_appname);
 			
 			/* get short name of running app */
 			if (!strcasecmp (argv [0], "call"))
-				snprintf (appname, X_TITLE_APPNAME_MAXLEN, "%s", basename_of (argv [1], &appname_len));
+				snprintf (appname, TITLE_APPNAME_MAXLEN, "%s", basename_of (argv [1], &appname_len));
 			else
-				snprintf (appname, X_TITLE_APPNAME_MAXLEN, "%s", basename_of (argv [0], &appname_len));
+				snprintf (appname, TITLE_APPNAME_MAXLEN, "%s", basename_of (argv [0], &appname_len));
 			
 			/* remove extension from name of running app */
-			for (i = 0; i < X_TITLE_APPNAME_MAXLEN; i++)
+			for (i = 0; i < TITLE_APPNAME_MAXLEN; i++)
 			{
 				/* 
 				 * searching for a '.' from the start (instead of the end) of a filename
@@ -3117,9 +3114,8 @@ static int dopath_exec(int argc, char **argv)
 				}
 			}
 			
-			X_change_config (X_CHG_TITLE_APPNAME, strupr (appname));
+			Video->change_config (CHG_TITLE_APPNAME, strupr (appname));
 		 }
-#endif
 
 	switch (scan_path_env(name, argv)) {
 	    case 3:
@@ -3145,11 +3141,9 @@ static int dopath_exec(int argc, char **argv)
 	    }
 	 }
 	 
-#ifdef X_SUPPORT
-	 	if (config.X)
+	 	if (Video->change_config)
 			/* revert to the previous app name */
-			X_change_config (X_CHG_TITLE_APPNAME, saved_title_appname);
-#endif
+			Video->change_config (CHG_TITLE_APPNAME, saved_title_appname);
 	}
 	if ((ret == -1 && rdta->need_errprinting == 1)
 		|| (EXITCODE && rdta->need_errprinting == 2)) {
@@ -3621,7 +3615,7 @@ int comcom_main(int argc, char **argv)
 			comspec = comspec_;
 			sprintf(comspec, "%c:\\COMMAND.COM", drive);
 		}
-		com_msetenv("COMSPEC", comspec, 1);
+		com_msetenv("COMSPEC", comspec, _psp);
 		argc = remove_arg(i, argc, argv);
 
 		/* we now try to exec autoexec.bat or its substitute */

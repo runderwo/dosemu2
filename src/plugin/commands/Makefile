@@ -9,7 +9,7 @@ include $(top_builddir)/Makefile.conf
 
 
 CFILES=commands.c lredir.c xmode.c emumouse.c dosdbg.c msetenv.c \
-       unix.c cmdline.c comcom.c
+       unix.c cmdline.c comcom.c builtins.c
 
 SFILES=generic.S
 ALL=$(CFILES) $(SFILES)
@@ -19,12 +19,13 @@ DEPENDS=$(CFILES:.c=.d)
 
 SUBDIR=commands_plugin         # just to make Makefile.common happy
 
-D=$(BINPATH)/commands
+D:=$(BINPATH)/commands
 
 COM = $(D)/generic.com
 STUBSYMLINK = $(D)/bootoff.com $(D)/booton.com $(D)/ecpuon.com $(D)/ecpuoff.com $(D)/eject.com \
-  $(D)/exitemu.com $(D)/speed.com $(D)/system.com $(D)/uchdir.com $(D)/ugetcwd.com $(D)/cmdline.com\
-  $(D)/vgaoff.com $(D)/vgaon.com $(D)/lredir.com $(D)/emumouse.com $(D)/xmode.com $(D)/dosdbg.com $(D)/unix.com
+  $(D)/exitemu.com $(D)/speed.com $(D)/system.com $(D)/uchdir.com $(D)/ugetcwd.com $(D)/cmdline.com \
+  $(D)/vgaoff.com $(D)/vgaon.com $(D)/lredir.com $(D)/emumouse.com $(D)/xmode.com $(D)/dosdbg.com \
+  $(D)/unix.com
 
 #STUBL = $(D)/lredir.com $(D)/emumouse.com $(D)/xmode.com $(D)/dosdbg.com $(D)/unix.com
 STUBL =

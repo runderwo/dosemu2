@@ -83,7 +83,6 @@
 #endif
 
 #include "dma.h"
-#include "userhook.h"
 
 static void callback_return(void);
 
@@ -316,7 +315,7 @@ void vm86_GP_fault(void)
     else {
       if(pic_icount) {
     /* looks like we have failed to catch iret... */
-         g_printf("HLT requested with pic_icount=%li: lina=%p!\n",
+         g_printf("HLT requested with pic_icount=%u: lina=%p!\n",
 	    pic_icount, lina);
          show_regs(__FILE__, __LINE__);
       }
@@ -468,31 +467,7 @@ run_vm86(void)
 	}
 
 freeze_idle:
-    handle_signals();
-
-    /* catch user hooks here */
-    if (uhook_fdin != -1) uhook_poll();
-
-    /* here we include the hooks to possible plug-ins */
-    #define VM86_RETURN_VALUE retval
-    #include "plugin_poll.h"
-    #undef VM86_RETURN_VALUE
-
-
-#ifdef USE_MHPDBG  
-    if (mhpdbg.active) mhp_debug(DBG_POLL, 0, 0);
-#endif
-    /*
-     * This is here because ioctl() is non-reentrant, and signal handlers
-     * may have to use ioctl().  This results in a possible (probable)
-     * time lag of indeterminate length (and a bad return value). Ah, life
-     * isn't perfect.
-     * 
-     * I really need to clean up the queue functions to use real queues.
-     */
-    if (iq.queued)
-	do_queued_ioctl();
-    /* update the pic to reflect IEF */
+  do_periodic_stuff();
 
   if (dosemu_frozen) {
     static int minpoll = 0;
@@ -540,7 +515,7 @@ static void callback_return(void)
  * NOTE: It does _not_ save any of the vm86 registers except old cs:ip !!
  *       The _caller_ has to do this.
  */
-void do_call_back(Bit32u codefarptr)
+static void do_interruptible_call_back(Bit32u codefarptr, int inter)
 {
 	unsigned char * ssp;
 	unsigned long sp;
@@ -572,15 +547,12 @@ void do_call_back(Bit32u codefarptr)
         while (callback_level > level) {
 		if (fatalerr) leavedos(99);
 	/*
-	 * BIG WARNING: we can't allow IRQs during the callback, otherwise, if
-	 * the pic_run() activates the IRQ after callback_level is decremented
-	 * (i.e. after the last vm86() call for that callback), we will return
-	 * here after EOI (before iret, inside the handler) and we'll screw up
-	 * the registers and stack.
-	 * Therefore we should NOT use things like loopstep_run_vm86() here!
+	 * BIG WARNING: We should NOT use things like loopstep_run_vm86() here!
 	 * Only the plain run_vm86() and run_dpmi() are safe (also DPMI-safe).
 	 * -SS
 	 */
+		if (inter) /* this is essential to do BEFORE run_[vm86|dpmi]() */
+			run_irqs();
 		if (!in_dpmi)
 			run_vm86();
 		else
@@ -589,4 +561,23 @@ void do_call_back(Bit32u codefarptr)
 	/* ... and back we are */
 	REG(cs) = oldcs;
 	LWORD(eip) = oldip;
+}
+
+void do_call_back(Bit32u codefarptr)
+{
+	do_interruptible_call_back(codefarptr, 0);
+}
+
+void do_intr_call_back(int intno, int inter)
+{
+	unsigned char * ssp = (unsigned char *)(LWORD(ss)<<4);
+	unsigned long sp = (unsigned long) LWORD(esp);
+	pushw(ssp, sp, LWORD(eflags));
+	LWORD(esp) = (LWORD(esp) - 2) & 0xffff;
+	clear_IF();
+	clear_TF();
+	clear_AC();
+	clear_NT();
+
+	do_interruptible_call_back((ISEG(intno) << 16) + IOFF(intno), inter);
 }

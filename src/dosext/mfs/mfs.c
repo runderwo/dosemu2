@@ -47,8 +47,15 @@
  *
  * HISTORY:
  * $Log$
- * Revision 1.1  2003/06/23 00:02:08  bartoldeman
- * Initial revision
+ * Revision 1.2.2.1  2003/09/17 14:40:54  bartoldeman
+ * Sync up with CVS HEAD, except for GPM Mouse. This should be 1.2.0rc1
+ * except for some doc changes, dosemu.conf layout, RPM, and FreeDOS stuff.
+ *
+ * Revision 1.2  2003/07/15 16:58:08  bartoldeman
+ * Small optimization.
+ *
+ * Revision 1.1.1.1  2003/06/23 00:02:08  bartoldeman
+ * Initial import (dosemu-1.1.5.2).
  *
 
 Work started by Tim Bird (tbird@novell.com) 28th October 1993
@@ -193,6 +200,7 @@ TODO:
 #include <signal.h>
 #include <string.h>
 #include "mfs.h"
+#include "dos2linux.h"
 /* For passing through GetRedirection Status */
 #include "memory.h"
 #include "redirect.h"
@@ -301,7 +309,7 @@ lol_t lol = NULL;
 static far_t cdsfarptr;
 static cds_t cds_base;
 static cds_t cds;
-static sda_t sda;
+sda_t sda;
 
 static int dos_major;
 static int dos_minor;
@@ -1103,11 +1111,8 @@ static struct dir_list *get_dir(char *name, char *mname, char *mext)
 
       if (dir_list == NULL) {
         dir_list = make_dir_list(20);
-	entry = make_entry(dir_list);
       }
-      else {
-	entry = make_entry(dir_list);
-      }
+      entry = make_entry(dir_list);
 
       memcpy(entry->name, fname, 8);
       memcpy(entry->ext, fext, 3);
@@ -3694,7 +3699,7 @@ dos_fs_redirect(state_t *state)
 
 
 #ifndef NO_VOLUME_LABELS
-    if (attr & VOLUME_LABEL &&
+    if (((attr & (VOLUME_LABEL|DIRECTORY)) == VOLUME_LABEL) &&
 	strncmpDOS(sdb_template_name(sdb), "????????", 8) == 0 &&
 	strncmpDOS(sdb_template_ext(sdb), "???", 3) == 0) {
       Debug0((dbg_fd, "DO LABEL!!\n"));
@@ -3729,12 +3734,7 @@ dos_fs_redirect(state_t *state)
       memcpy(sdb_file_name(sdb), fname, 8);
       memcpy(sdb_file_ext(sdb), fext, 3);
       sdb_file_attr(sdb) = VOLUME_LABEL;
-      if (attr == VOLUME_LABEL)
-        return TRUE; /* no findnext */
       sdb_dir_entry(sdb) = 0x0;
-      /* if (attr != VOLUME_LABEL)
-	find_in_progress = TRUE; */
-      auspr(bs_pos + 1, fname, fext);
 
       /* We fill the hlist for labels not here,
        * we do it a few lines later. --ms
@@ -3749,7 +3749,18 @@ dos_fs_redirect(state_t *state)
     if (bs_pos == fpath)
       strcpy(fpath, "/");
 
-    hlist = get_dir(fpath, "????????", "???");
+    /* for efficiency we don't read everything if there are no wildcards */
+    if (!memchr(sdb_template_name(sdb), '?', 8) &&
+        !memchr(sdb_template_name(sdb), '*', 8) &&
+        !memchr(sdb_template_ext(sdb), '?', 3) &&
+        !memchr(sdb_template_ext(sdb), '*', 3)) {
+      hlist = get_dir(fpath, sdb_template_name(sdb),
+                      sdb_template_ext(sdb));
+      fpath[0] = '\0';
+    }
+    else
+      hlist = get_dir(fpath, "????????", "???");
+
     if (hlist==NULL)  {
       SETWORD(&(state->eax), NO_MORE_FILES);
       return (FALSE);
@@ -3768,7 +3779,7 @@ dos_fs_redirect(state_t *state)
     /*
      * This is the right place to leave this stuff for volume labels. --ms
      */
-    if (attr & VOLUME_LABEL &&
+    if (((attr & (VOLUME_LABEL|DIRECTORY)) == VOLUME_LABEL) &&
         strncmpDOS(sdb_template_name(sdb), "????????", 8) == 0 &&
         strncmpDOS(sdb_template_ext(sdb), "???", 3) == 0) {
       Debug0((dbg_fd, "DONE LABEL!!\n"));

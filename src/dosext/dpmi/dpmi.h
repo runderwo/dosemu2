@@ -25,12 +25,14 @@
 #define DPMI_private_paragraphs	((DPMI_max_rec_rm_func * DPMI_rm_stack_size)>>4)
 					/* private data for DPMI server */
 #define current_client (in_dpmi-1)
+#define DPMI_CLIENT (DPMIclient[current_client])
+#define PREV_DPMI_CLIENT (DPMIclient[current_client-1])
 
 /* Aargh!! Is this the only way we have to know if a signal interrupted
  * us in DPMI server or client code? */
 #ifdef __linux__
-#define UCODESEL 0x23
-#define UDATASEL 0x2b
+#define UCODESEL ucodesel
+#define UDATASEL udatasel
 #endif
 
 /* DANG_BEGIN_REMARK
@@ -126,6 +128,17 @@ typedef struct dpmi_pm_block_stuct {
   char     *base;
 } dpmi_pm_block;
 
+struct DPMIclient_struct {
+  struct sigcontext_struct stack_frame;
+  int is_32;
+  dpmi_pm_block *pm_block_root;
+  /* for real mode call back, DPMI function 0x303 0x304 */
+  RealModeCallBack realModeCallBack[0x10];
+  INTDESC Interrupt_Table[0x100];
+  INTDESC Exception_Table[0x20];
+};
+extern struct DPMIclient_struct DPMIclient[DPMI_MAX_CLIENTS];
+
 EXTERN int in_dpmi INIT(0);        /* Set to 1 when running under DPMI */
 EXTERN int in_win31 INIT(0);       /* Set to 1 when running Windows 3.1 */
 EXTERN int in_dpmi_dos_int INIT(0);
@@ -133,15 +146,12 @@ EXTERN int dpmi_mhp_TF INIT(0);
 EXTERN unsigned char dpmi_mhp_intxxtab[256] INIT({0});
 EXTERN int is_cli INIT(0);
 
-extern dpmi_pm_block *pm_block_root[DPMI_MAX_CLIENTS];
 extern unsigned short DPMI_private_data_segment;
-extern int DPMIclient_is_32;
 extern unsigned long dpmi_free_memory; /* how many bytes memory client */
 				       /* can allocate */
 extern unsigned long pm_block_handle_used;       /* tracking handle */
-extern INTDESC Interrupt_Table[0x100];
 extern SEGDESC Segments[];
-extern struct sigcontext_struct dpmi_stack_frame[DPMI_MAX_CLIENTS];
+extern struct sigcontext_struct _emu_stack_frame;
 /* used to store the dpmi client registers */
 extern RealModeCallBack mouseCallBack; /* user\'s mouse routine */
 extern char *ldt_buffer;
@@ -184,6 +194,8 @@ unsigned long dpmi_GetSegmentBaseAddress(unsigned short selector);
 unsigned long GetSegmentBaseAddress(unsigned short);
 unsigned long GetSegmentLimit(unsigned short);
 void CheckSelectors(struct sigcontext_struct *scp);
+int ValidSelector(unsigned short selector);
+int ValidAndUsedSelector(unsigned short selector);
 
 extern void DPMI_show_state(struct sigcontext_struct *scp);
 extern void dpmi_sigio(struct sigcontext_struct *scp);

@@ -9,3 +9,5 @@ extern int DOSemu_Terminal_Scroll;
 extern int DOSemu_Slang_Show_Help;
 int term_init(void);
 void term_close(void);
+int using_xterm(void);
+void xtermmouse_get_event (Bit8u **kbp, int *kb_count);

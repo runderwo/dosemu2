@@ -178,6 +178,18 @@ signal_init(void)
   struct sigaction sa;
   sigset_t trashset;
 
+  /* Save %fs and %gs for NPTL */
+  __asm__ __volatile__ (" \
+	pushfl\n \
+	popl	%0\n \
+	movw	%%fs, %1\n \
+	movw	%%gs, %2\n \
+	" \
+	:
+	"=m"(_emu_stack_frame.eflags),
+	"=m"(_emu_stack_frame.fs),
+	"=m"(_emu_stack_frame.gs));
+
   /* block no additional signals (i.e. get the current signal mask) */
   sigemptyset(&trashset);
   sigprocmask(SIG_BLOCK, &trashset, &oldset);
@@ -395,7 +407,12 @@ static void SIGALRM_call(void)
       */
      keyb_client_run();
   }
+  else
 #endif
+  /* for the SLang terminal we'll delay the release of shift, ctrl, ...
+     keystrokes a bit */
+  if (!config.console_keyb)
+    keyb_client_run();
 
   /* for other front-ends, keyb_client_run() is called from ioctl.c if data is
    * available, so we don't need to do it here.
@@ -437,7 +454,7 @@ static void SIGALRM_call(void)
      X_blink_cursor();
   }
 #endif
-  if (!running && !video_update_lock) {
+  if (!running) {
     if (Video->update_screen 
 #if VIDEO_CHECK_DIRTY
        && (update_pending || vm86s.screen_bitmap&screen_mask)
@@ -461,6 +478,7 @@ static void SIGALRM_call(void)
 #endif
     }
     else if (Video->update_cursor) {
+       v_printf("update cursor\n");
        Video->update_cursor();
     }
   }

@@ -88,7 +88,6 @@ void mouse_cursor(int), mouse_pos(void), mouse_setpos(void),
 /* mouse movement functions */
 static void mouse_reset(int);
 static void mouse_do_cur(void), mouse_update_cursor(void);
-static void mouse_reset_to_current_video_mode(void);
 
 /* graphics cursor */
 void graph_cursor(void), text_cursor(void);
@@ -104,6 +103,7 @@ static int last_mouse_call_read_mickeys = 0;
 
 static int mouse_events = 0;
 static mouse_erase_t mouse_erase;
+static int sent_mouse_esc = FALSE;
 
 static mouse_t *mice = &config.mouse;
 /* the 'volatile' is there to cover some bug in gcc -O -g3 */
@@ -335,10 +335,25 @@ int mouse_is_ps2(void)
 int
 mouse_int(void)
 {
-  if (!mice->intdrv || (!mouse.enabled && LWORD(eax) != 0x20)) 
-    return 0;
+  /* delayed mouse init for xterms; should be done cleaner in 1.3.x */
+  if (mice->type == MOUSE_XTERM) {
+    /* save old highlight mouse tracking */
+    mice->intdrv = TRUE;
+    printf("\033[?1001s");
+    /* enable mouse tracking */
+    printf("\033[?9h\033[?1000h\033[?1002h\033[?1003h");	
+    fflush (stdout);
+    m_printf("XTERM MOUSE: Remote terminal mouse tracking enabled\n");
+    sent_mouse_esc = TRUE;
+  }
   
   m_printf("MOUSEALAN: int 0x%x ebx=%x\n", LWORD(eax), LWORD(ebx));
+  if (!mice->intdrv || (!mouse.enabled && LWORD(eax) != 0x20)) {
+    m_printf("MOUSE: driver disabled, intdrv=%i enable=%i\n",
+      mice->intdrv, mouse.enabled);
+    return 0;
+  }
+
   switch (LWORD(eax)) {
   case 0x00:			/* Mouse Reset/Get Mouse Installed Flag */
     mouse_reset(0);
@@ -1022,6 +1037,8 @@ static void mouse_reset(int flag)
   memcpy((void *)mouse.graphcursormask,default_graphcursormask,32);
   mouse.hotx = mouse.hoty = -1;
 
+  mouse.enabled = TRUE;
+
   mouse_do_cur();
 }
 
@@ -1198,7 +1215,7 @@ mouse_set_gcur(void)
   memcpy((void *)mouse.graphcursormask,ptr+16,32);
 
   /* compile it so that it can acutally be drawn. */
-  if (mice->type != MOUSE_X) {
+  if (mice->type != MOUSE_X && mice->type != MOUSE_XTERM) {
     define_graphics_cursor((short *)mouse.graphscreenmask,(short *)mouse.graphcursormask);
   }
 }
@@ -1656,11 +1673,13 @@ do_mouse_irq()
 	     LWORD(cs), LWORD(eip));
 }
 
-void
-mouse_event()
+void mouse_event(void)
 {
   if (mouse.mask & mouse_events && (mouse.cs || mouse.ip))
     do_irq();
+  else
+    m_printf("MOUSE: Skipping irq, mask=0x%x, ev=0x%x, cs=0x%x, ip=0x%x\n",
+      mouse.mask, mouse_events, mouse.cs, mouse.ip);
   mouse_events = 0;
 }
 
@@ -1685,6 +1704,9 @@ mouse_do_cur(void)
     return;
   }
 #endif
+  if (mice->type == MOUSE_XTERM)
+    return;
+
   if (!scr_state.current) 
   	return;
 
@@ -1841,7 +1863,7 @@ dosemu_mouse_init(void)
   }
   else 
 #endif
-  {
+  if (!Mouse_xterm.init()) {
     if (mice->intdrv) {
       struct stat buf;
       m_printf("Opening internal mouse: %s\n", mice->dev);
@@ -1886,6 +1908,11 @@ dosemu_mouse_init(void)
     mouse.init_speed_y = 8;
   }
   
+  if (mouse_is_ps2()) {
+    pic_seti(PIC_IMOUSE, DOSEMUMouseEvents, 0, do_mouse_irq);
+    pic_unmaski(PIC_IMOUSE);
+  }
+
   /* We set the defaults at the end so that we can test the mouse type */
   mouse_reset(1);		/* Let's set defaults now ! */
   m_printf("MOUSE: INIT complete\n");
@@ -1975,6 +2002,13 @@ dosemu_mouse_close(void)
   int result;
 
   if (mice->type == MOUSE_X) return;   
+  if (mice->type == MOUSE_XTERM) {
+    if (sent_mouse_esc) {
+      Mouse_xterm.close();
+      sent_mouse_esc = FALSE;
+    }
+    return;
+  }
   
   if (mice->intdrv && mice->fd != -1 ) {
     if (mice->oldset) {

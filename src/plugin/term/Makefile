@@ -10,7 +10,7 @@ include $(top_builddir)/Makefile.conf
 
 SUBDIR=term
 
-CFILES=term_core.c terminal.c keyb_slang.c
+CFILES=term_core.c terminal.c keyb_slang.c mouse_xterm.c
 
 SFILES=
 ALL=$(CFILES) $(SFILES)

@@ -298,10 +298,10 @@ char ci,cc;
   if(header_count>15) header_count=0;
   
   if(s2)
-  log_printf(1, "PIC: %c%2ld %c%2ld %08lx %08lx %08lx %s%02d%s\n",
+  log_printf(1, "PIC: %c%2d %c%2d %08lx %08lx %08lx %s%02d%s\n",
      cc, pic_icount, ci, pic_ilevel, pic_isr, pic_imr, pic_irr, s1, v1, s2);
   else
-  log_printf(1, "PIC: %c%2ld %c%2ld %08lx %08lx %08lx %s\n",
+  log_printf(1, "PIC: %c%2d %c%2d %08lx %08lx %08lx %s\n",
      cc, pic_icount, ci, pic_ilevel, pic_isr, pic_imr, pic_irr, s1);
 
 }
@@ -403,6 +403,11 @@ if (pic_isr)
 if(ilevel != pic_ilevel)
   error("PIC0: ilevel=%x != pic_ilevel=%x, pic_isr=%lx\n",
     ilevel, pic_ilevel, pic_isr);
+if (ilevel != 32 && !test_bit(ilevel, &pic_irqall)) {
+  /* this is a fake IRQ, don't allow to reset its ISR bit */
+  pic_print(1, "Protecting ISR bit for lvl ", ilevel, " from spurious EOI");
+  ilevel = 32;
+}
 
 if (in_dpmi)
   dpmi_eflags |= VIP;	/* we have to leave the signal context */
@@ -459,6 +464,11 @@ if (pic_isr)
 if(ilevel != pic_ilevel)
   error("PIC1: ilevel=%x != pic_ilevel=%x, pic_isr=%lx\n",
     ilevel, pic_ilevel, pic_isr);
+if (ilevel != 32 && !test_bit(ilevel, &pic_irqall)) {
+  /* this is a fake IRQ, don't allow to reset its ISR bit */
+  pic_print(1, "Protecting ISR bit for lvl ", ilevel, " from spurious EOI");
+  ilevel = 32;
+}
 
 if (in_dpmi)
   dpmi_eflags |= VIP;	/* we have to leave the signal context */
@@ -781,7 +791,7 @@ int do_irq(void)
       while(!fatalerr && test_bit(ilevel,&pic_isr))
       {
 	if (debug_level('r')>2)
-		r_printf("------ PIC: intr loop ---%06lx--%06lx----\n",
+		r_printf("------ PIC: intr loop ---%06x--%06x----\n",
 			pic_vm86_count,pic_dpmi_count);
 	if (in_dpmi ) {
           ++pic_dpmi_count;
@@ -793,7 +803,6 @@ int do_irq(void)
 	  pic_print(2, "Initiating VM86 irq lvl ", ilevel, " in do_irq");
           run_vm86();
         }
-        pic_isr &= pic_irqall;    /*  levels 0 and 16-31 are Auto-EOI  */
 	if (!test_bit(ilevel,&pic_isr))
 	  break;
 
@@ -1148,7 +1157,7 @@ void pic_sched(int ilevel, int interval)
 
 void pic_set_callback(Bit16u cs, Bit16u ip)
 {
-  r_printf("PIC: setting callback to %x:%x (pic_icount=%ld)\n",
+  r_printf("PIC: setting callback to %x:%x (pic_icount=%u)\n",
     cs, ip, pic_icount);
   cb_ip = ip;
   cb_cs = cs;

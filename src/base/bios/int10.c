@@ -82,9 +82,6 @@
 #endif
 
 #if USE_DUALMON
-  #if USE_SCROLL_QUEUE
-    #error "dualmon: You can't have defined USE_SCROLL_QUEUE together with USE_DUALMON"
-  #endif
   #define BIOS_CONFIG_SCREEN_MODE (READ_WORD(BIOS_CONFIGURATION) & 0x30)
   #define IS_SCREENMODE_MDA (BIOS_CONFIG_SCREEN_MODE == 0x30)
   /* This is the text screen base, the DOS program actually has to use.
@@ -235,65 +232,13 @@ Scroll(us *sadr, int x0, int y0, int x1, int y1, int l, int att)
   }
 }
 
-/**************************************************************/
-/* scroll queue */
-
-#if USE_SCROLL_QUEUE
-
-int sq_head=0, sq_tail=0;
-
-#define SQ_INC(i) ((i+1)%(SQ_MAXLENGTH+1))
-
-struct scroll_entry *get_scroll_queue() {
-   if (sq_head==sq_tail) return NULL;
-   sq_tail=SQ_INC(sq_tail);
-   return &scroll_queue[sq_tail];
-}
-
-void clear_scroll_queue() {
-   while(get_scroll_queue());
-}
-
-volatile int video_update_lock = 0;
-
-void bios_scroll(int x0,int y0,int x1,int y1,int n,byte attr) {
-   struct scroll_entry *s;
-   int sqh2;
-
-   if (config.cardtype == CARD_NONE)
-     return;
-
-   VIDEO_UPDATE_LOCK();
-   sqh2=SQ_INC(sq_head);
-   if (n!=0 && !Video->is_mapped && sqh2!=sq_tail) {
-      s=&scroll_queue[sq_head];
-      if (sq_head!=sq_tail && 
-	 s->x0==x0 && s->y0==y0 && 
-	 s->x1==x1 && s->y1==y1 &&
-	 s->attr==attr)
-      {
-         s->n+=n;
-      }
-      else {
-	 s=&scroll_queue[sqh2];
-         s->x0=x0; s->y0=y0;
-         s->x1=x1; s->y1=y1;
-         s->n=n;   s->attr=attr;
-         sq_head=sqh2;
-      }
-   }
-   Scroll(screen_adr,x0,y0,x1,y1,n,attr);
-   VIDEO_UPDATE_UNLOCK();
-}
+#if USE_DUALMON
+  #define bios_scroll(x0,y0,x1,y1,n,attr) ({\
+    if (IS_SCREENMODE_MDA) Scroll((void *)MDA_PHYS_TEXT_BASE,x0,y0,x1,y1,n,attr); \
+    else Scroll(screen_adr,x0,y0,x1,y1,n,attr);\
+   })
 #else
-  #if USE_DUALMON
-    #define bios_scroll(x0,y0,x1,y1,n,attr) ({\
-     if (IS_SCREENMODE_MDA) Scroll((void *)MDA_PHYS_TEXT_BASE,x0,y0,x1,y1,n,attr); \
-     else Scroll(screen_adr,x0,y0,x1,y1,n,attr);\
-    })
-  #else
-    #define bios_scroll(x0,y0,x1,y1,n,attr) Scroll(screen_adr,x0,y0,x1,y1,n,attr)
-  #endif
+  #define bios_scroll(x0,y0,x1,y1,n,attr) Scroll(screen_adr,x0,y0,x1,y1,n,attr)
 #endif
 
 /* Output a character to the screen. */ 
@@ -320,23 +265,7 @@ void tty_char_out(unsigned char ch, int s, int attr)
 /* i10_deb("tty_char_out: char 0x%02x, page %d, attr 0x%02x\n", ch, s, attr); */
 
   if (config.cardtype == CARD_NONE) {
-#if 1
-     /* FIXME
-      *
-      * For some unknown reasons (FILE *)stdout gets clobbered
-      * when we open a debug file (dbg_fd, -o/-O options on commandline)
-      * and even fputc(ch, stdout) then does not write anything.
-      * I could not find out _where_ this happens.
-      *
-      * However, writing directly to fd 1 still works. Therefore, because
-      * we do setbuf(stdout, NULL) anyway (src/base/init/init.c), we work
-      * around here this way.
-      *                         --Hans, 2001/04/27
-      */
-     write(1, &ch, 1);
-#else
      putchar (ch);
-#endif
      return;
   }
 
@@ -439,7 +368,6 @@ clear_screen(int s, int att)
   set_bios_cursor_x_position(s, 0);
   set_bios_cursor_y_position(s, 0);
   cursor_row = cursor_col = 0;
-  clear_scroll_queue();
 }
 
 
@@ -518,10 +446,6 @@ static boolean X_set_video_mode(int mode) {
    */
   WRITE_BYTE(BIOS_VIDEO_MODE, vmi->VGA_mode & 0x7f);
   WRITE_BYTE(BIOS_CURRENT_SCREEN_PAGE, 0);
-
-  if(vmi->mode_class == TEXT) {
-    clear_scroll_queue();
-  }
 
   li = vmi->text_height;
   co = vmi->text_width;
@@ -672,8 +596,6 @@ boolean set_video_mode(int mode) {
 #endif
     
 do_text_mode:
-    clear_scroll_queue();
-
     li=text_scanlines/vga_font_height;
     if (li>MAX_LINES) li=MAX_LINES;
     WRITE_BYTE(BIOS_ROWS_ON_SCREEN_MINUS_1, li-1);
@@ -786,7 +708,7 @@ int int10(void)
   return 1;
 }
 
-void int10_old()
+void int10_old(void) /* with dualmon */
 {
   /* some code here is copied from Alan Cox ***************/
   int x, y;
@@ -823,7 +745,6 @@ void int10_old()
 #if 0
   v_printf("VID: int10, ax=%04x bx=%04x\n",LWORD(eax),LWORD(ebx));
 #endif
-  NOCARRY;
 
   switch (HI(ax)) {
   case 0x0:			/* define mode */
@@ -832,7 +753,6 @@ void int10_old()
     vga_font_height=text_scanlines/25;
     if (!set_video_mode(LO(ax))) {
        v_printf("int10,0: set_video_mode failed\n");
-       CARRY;
     }
     break;
 
@@ -849,7 +769,6 @@ void int10_old()
     v_printf("set cursor: pg:%d x:%d y:%d\n", page, x, y);
     if (page > 7) {
       v_printf("ERROR: video error (setcur/page>7: %d)\n", page);
-      CARRY;
       return;
     }
     if (x >= co || y >= li) {
@@ -867,15 +786,17 @@ void int10_old()
     break;
 
   case 0x3:			/* get cursor pos/shape */
+    /* output start & end scanline even if the requested page is invalid */
+    LWORD(ecx) = READ_WORD(BIOS_CURSOR_SHAPE);
+
     page = HI(bx);
     if (page > 7) {
+      LWORD(edx) = 0;
       v_printf("ERROR: video error(0x3 page>7: %d)\n", page);
-      CARRY;
-      return;
+    } else {
+      LO(dx) = get_bios_cursor_x_position(page);
+      HI(dx) = get_bios_cursor_y_position(page);
     }
-    REG(edx) = (get_bios_cursor_y_position(page) << 8) 
-              | get_bios_cursor_x_position(page);
-    REG(ecx) = READ_WORD(BIOS_CURSOR_SHAPE);
     break;
 
   case 0x5:
@@ -887,7 +808,6 @@ void int10_old()
       v_printf("VID: change page from %d to %d!\n", READ_BYTE(BIOS_CURRENT_SCREEN_PAGE), page);
       if (page > max_page) {
 	v_printf("ERROR: video error: set bad page %d\n", page);
-	CARRY;
 	break;
       }
       if (config.console_video) set_vc_screen_page(page);
@@ -919,7 +839,6 @@ void int10_old()
     page = HI(bx);
     if (page > max_page) {
       v_printf("ERROR: read char from bad page %d\n", page);
-      CARRY;
       break;
     }
     sm = SCREEN_ADR(page);
@@ -1198,12 +1117,8 @@ void int10_old()
 
   case 0x4:			/* get light pen */
     v_printf("ERROR: video error(no light pen)\n");
-#if 0
-    CARRY;
-#else
     HI(ax) = 0;   /* "light pen switch not pressed" */
                   /* This is how my VGA BIOS behaves [rz] */
-#endif    
     return;
 
   case 0x1a:			/* get display combo */
@@ -1258,7 +1173,6 @@ void int10_old()
 	    {
 	      li = old_li; /* not that it changed */
 	      vga_font_height = old_font_height;
-	      CARRY;
 	    }
 #if 0
 	  else if (old_li < li) 
@@ -1361,13 +1275,12 @@ void int10_old()
 
   default:
     v_printf("new unknown video int 0x%x\n", LWORD(eax));
-    CARRY;
     break;
   }
 }
 
 #if X_GRAPHICS
-void int10_new()
+void int10_new(void) /* with X but without dualmon */
 {
   /* some code here is copied from Alan Cox ***************/
   int x, y;
@@ -1390,7 +1303,6 @@ void int10_new()
 #if 0
   i10_msg("ax %04x, bx %04x\n",LWORD(eax), LWORD(ebx));
 #endif
-  NOCARRY;
 
   switch(HI(ax)) {
     case 0x00:		/* set video mode */
@@ -1399,7 +1311,6 @@ void int10_new()
       vga_font_height = text_scanlines / 25;	// ??? -> into set_video_mode()!
       if(!set_video_mode(LO(ax))) {
         i10_msg("set_video_mode() failed\n");
-        CARRY;
       }
       break;
 
@@ -1418,7 +1329,6 @@ void int10_new()
       i10_deb("set cursor pos: page %d, x.y %d.%d\n", page, x, y);
       if(page > 7) {
         i10_msg("set cursor pos: page > 7: %d\n", page);
-        CARRY;
         return;
       }
       if (x >= co || y >= li) {
@@ -1437,15 +1347,18 @@ void int10_new()
 
 
     case 0x03:		/* get cursor pos/shape */
+      /* output start & end scanline even if the requested page is invalid */
+      LWORD(ecx) = READ_WORD(BIOS_CURSOR_SHAPE);
+
       page = HI(bx);
       if (page > 7) {
+        LWORD(edx) = 0;
         i10_msg("get cursor pos: page > 7: %d\n", page);
-        CARRY;
-        return;
+      } else {
+        LO(dx) = get_bios_cursor_x_position(page);
+        HI(dx) = get_bios_cursor_y_position(page);
       }
-      LO(dx) = get_bios_cursor_x_position(page);
-      HI(dx) = get_bios_cursor_y_position(page);
-      LWORD(ecx) = READ_WORD(BIOS_CURSOR_SHAPE);
+
       i10_deb(
         "get cursor pos: page %u, x.y %u.%u, shape %u-%u\n",
         page, LO(dx), HI(dx), HI(cx), LO(cx)
@@ -1465,7 +1378,6 @@ void int10_new()
       i10_deb("set display page: from %d to %d\n", READ_BYTE(BIOS_CURRENT_SCREEN_PAGE), page);
       if(page > max_page) {
 	i10_msg("set display page: bad page %d\n", page);
-	CARRY;
 	break;
       }
       if (config.console_video) set_vc_screen_page(page);
@@ -1513,7 +1425,6 @@ void int10_new()
       page = HI(bx);
       if (page > max_page) {
         i10_msg("read char: invalid page %d\n", page);
-        CARRY;
         break;
       }
       if(vga.mode_class == TEXT) {
@@ -1807,7 +1718,6 @@ void int10_new()
             if(!set_video_mode(video_mode | (1 << 16))) {
               li = old_li;	/* not that it changed */
               vga_font_height = old_font_height;
-              CARRY;
             }
             break;
 
@@ -2051,7 +1961,6 @@ void int10_new()
 
     case 0x1c:		/* save/restore video state */
       i10_msg("save/restore: NOT IMPLEMETED\n");
-      CARRY;
       break;
 
 
@@ -2076,7 +1985,6 @@ void int10_new()
 
     default:
       i10_msg("unknown video int 0x%04x\n", LWORD(eax));
-      CARRY;
       break;
   }
 }

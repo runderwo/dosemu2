@@ -72,39 +72,6 @@ void init_dualmon(void);
 #define ATTR_FG(attr) (attr & 0x0F)
 #define ATTR_BG(attr) (attr >> 4)
 
-/**********************************************************************/
-/* scroll queue */
-
-#define USE_SCROLL_QUEUE 0
-
-#if USE_SCROLL_QUEUE
-
-struct scroll_entry {
-   short x0,y0,x1,y1;
-   short n;
-   byte attr;
-};
-
-#define SQ_MAXLENGTH 5
-
-struct scroll_entry scroll_queue[SQ_MAXLENGTH+1];
-int sq_head,sq_tail;
-
-struct scroll_entry *get_scroll_queue();
-void clear_scroll_queue();
-
-extern int video_update_lock;
-
-#define VIDEO_UPDATE_LOCK() video_update_lock++;
-#define VIDEO_UPDATE_UNLOCK() video_update_lock--;
-
-#else
-#define video_update_lock 0
-#define VIDEO_UPDATE_LOCK()
-#define VIDEO_UPDATE_UNLOCK()
-#define clear_scroll_queue()
-#endif
-
 /***********************************************************************/
 
 /* Here's an idea to clean up the video code: Build a 'virtual' video
@@ -145,6 +112,8 @@ struct video_system {
    void (*update_cursor)(void);    /* update cursor position&shape. Called by sigalrm
                                   handler *only* if update_screen does not exist
                                   or is not done because the video mem is clean */
+   int (*change_config)(unsigned item, void *buf); /* change configuration
+                                  e.g. window title (optional) */
 };
 
 extern struct video_system *Video;
@@ -271,6 +240,21 @@ EXTERN int v_8514_base INIT(0);
 #define SIS		10
 #define SVGALIB	11
 #define MAX_CARDTYPE	SVGALIB
+
+/* title and change config definitions */
+#define TITLE_EMUNAME_MAXLEN 128
+#define TITLE_APPNAME_MAXLEN 25
+
+#define CHG_TITLE	1
+#define CHG_FONT	2
+#define CHG_MAP		3
+#define CHG_UNMAP	4
+#define CHG_WINSIZE	5
+#define CHG_TITLE_EMUNAME	6
+#define CHG_TITLE_APPNAME	7
+#define CHG_TITLE_SHOW_APPNAME	8
+#define CHG_BACKGROUND_PAUSE	9
+#define GET_TITLE_APPNAME	10
 
 EXTERN void get_screen_size (void);
 EXTERN void set_video_bios_size(void);

@@ -2,7 +2,7 @@ dnl Process this file with autoconf to produce a configure script.
 AC_INIT([DOSEMU], [],
 [http://sourceforge.net/tracker/?atid=457447&group_id=49784&func=browse],dosemu)
 AC_CONFIG_SRCDIR(src/base/misc/dosio.c)
-AC_PREREQ(2.57)
+AC_PREREQ(2.53)
 
 # first check if we are called from default-configure and if not,
 # execute that to parse compiletime settings
@@ -17,8 +17,8 @@ AC_CANONICAL_TARGET([])
 dnl Checks for programs.
 AC_PROG_CC
 AC_PROG_GCC_TRADITIONAL
-dnl AC_PROG_AWK
-dnl AC_PROG_INSTALL
+AC_PROG_AWK
+AC_PROG_INSTALL
 AC_PROG_LEX
 if test -z "`echo $LEX | grep flex`" ; then
   AC_CHECK_PROG(lex_ok, $LEX, "yes", "no")
@@ -47,7 +47,8 @@ AC_HEADER_MAJOR
 AC_HEADER_STDC
 AC_HEADER_SYS_WAIT
 AC_HEADER_TIME
-AC_CHECK_HEADERS(fcntl.h limits.h syslog.h sys/file.h sys/ioctl.h sys/time.h unistd.h termios.h)
+AC_CHECK_HEADERS(fcntl.h limits.h syslog.h sys/file.h sys/ioctl.h sys/time.h \
+    unistd.h termios.h)
 
 dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
@@ -134,7 +135,7 @@ AC_SUBST(CONFIG_HOST)
 
 dnl Do ELF if possible
 
-if ! echo -e '#ifdef __ELF__\n#define foo bar\n#endif\nfoo' \
+if ! printf '%b\n' '#ifdef __ELF__\n#define foo bar\n#endif\nfoo' \
    | gcc -E - | grep bar > /dev/null; then
   if test "$CONFIG_HOST" = "linux"; then
     echo "------------------------------------------------------------"
@@ -149,20 +150,22 @@ dnl Check for static and then also use it for tests
 LDFLAGS="-Wl,-warn-common"
 
 AC_ARG_ENABLE(linkstatic,
-              [  --enable-linkstatic     make statically linked binaries],
-              [AC_MSG_NOTICE(Linking statically...)
-               LDFLAGS="${LDFLAGS} -static"],
-	      [AC_MSG_NOTICE(Linking for shared libraries...)])
-
-dnl Do check wether we have svgalib and whether to use it
-
-AC_ARG_ENABLE(use-svgalib,
-	[  --enable-use-svgalib    use svgalib if available],
-	[use_svgalib="yes"],[use_svgalib="no"])
-if test "$use_svgalib" = "yes"; then
-  AC_CHECK_LIB(vga, vga_simple_init, , use_svgalib="no")
+              [  --enable-linkstatic     make statically linked binaries])
+if test "$enable_linkstatic" = "yes"; then
+              AC_MSG_NOTICE(Linking statically...)
+              LDFLAGS="${LDFLAGS} -static"
+else
+	      AC_MSG_NOTICE(Linking for shared libraries...)
 fi
-if test "$use_svgalib" = "yes"; then
+
+dnl Check whether we have svgalib and whether to use it
+
+AC_ARG_WITH(svgalib,
+	[  --with-svgalib          use svgalib if available])
+if test "$with_svgalib" = "yes"; then
+  AC_CHECK_LIB(vga, vga_simple_init, , with_svgalib="no")
+fi
+if test "$with_svgalib" = "yes"; then
   AC_MSG_NOTICE(Compiling with svgalib support...)
   AC_DEFINE(USE_SVGALIB)
   USE_SVGALIB="USE_SVGALIB=1"
@@ -171,14 +174,13 @@ else
   AC_MSG_NOTICE(Compiling without svgalib support...)
 fi
 
-dnl Do check wether we have pthreads and whether to use it
+dnl Check whether we have pthreads and whether to use it
 
-AC_ARG_ENABLE(use-pthreads,,
-	[use_pthreads="yes"],[use_pthreads="no"])
-if test "$use_pthreads" = "yes"; then
-  AC_CHECK_LIB(pthread, pthread_create, , use_pthreads="no")
+AC_ARG_WITH(pthreads)
+if test "$with_pthreads" = "yes"; then
+  AC_CHECK_LIB(pthread, pthread_create, , with_pthreads="no")
 fi
-if test "$use_pthreads" = "yes"; then
+if test "$with_pthreads" = "yes"; then
   AC_MSG_NOTICE(Compiling with pthreads support...)
   AC_DEFINE(USE_PTHREADS)
   USE_PTHREADS="USE_PTHREADS=1"
@@ -192,7 +194,9 @@ fi
 AC_ARG_WITH(slangdir, [  --with-slangdir=dir     Specify S-Lang directory],
   AC_MSG_CHECKING(for S-Lang)
   SLANGINC=""
-  if test "$withval" = "default"; then
+  if test "$withval" = "src/plugin/slang"; then
+    $srcdir/mkpluginhooks enable slang yes
+  elif test "$withval" = "default"; then
     if test -d $srcdir/../slang; then
       SLANGINC="-I ${srcdir}/../slang/src"
       SLANGLIB="-L ${srcdir}/../slang/src/objs"
@@ -219,8 +223,12 @@ AC_ARG_WITH(slangdir, [  --with-slangdir=dir     Specify S-Lang directory],
     fi
   fi
   dnl --- now that we've found it, check the link
-  AC_MSG_RESULT($SLANGINC $SLANGLIB)
-  AC_CHECK_LIB(slang, SLsmg_write_nwchars,
+  if test "$withval" = "src/plugin/slang"; then
+   LIBS="$LIBS -lm -ldl"
+   AC_MSG_RESULT() 
+  else
+   AC_MSG_RESULT($SLANGINC $SLANGLIB)
+   AC_CHECK_LIB(slang, SLsmg_write_nwchars,
     AC_MSG_WARN([Rejecting system S-Lang with UTF-8 support. It is incompatible with DOSEMU. Using supplied S-Lang.])
     buggy_slang=yes
     $srcdir/mkpluginhooks enable slang yes,
@@ -229,6 +237,7 @@ AC_ARG_WITH(slangdir, [  --with-slangdir=dir     Specify S-Lang directory],
                 [AC_MSG_WARN([No S-Lang library found. Using supplied S-Lang.])]
 		$srcdir/mkpluginhooks enable slang yes,
    -lm -ldl), -lm -ldl)
+  fi
 )
 
 if test "$no_x" = "yes" ; then
@@ -258,31 +267,25 @@ if test "$no_x" != "yes" ; then
   dnl Check for the MITSHM extention to speed up VGAemu
 
     AC_ARG_ENABLE(mitshm,
-              [  --enable-mitshm         force use of MITSHM X extension],
-              [forced_mitshm="yes"],[forced_mitshm="no"])
+              [  --disable-mitshm        do NOT use the MITSHM X extension])
 
-    AC_ARG_ENABLE(nomitshm,
-              [  --enable-nomitshm       do NOT use the MITSHM X extension],
-              [forced_nomitshm="yes"],[forced_nomitshm="no"])
-
-    if test "$forced_mitshm" = "yes" -a "$forced_nomitshm" = "yes" ; then
-      AC_MSG_ERROR(Can't use --enable-mitshm and --enable-nomitshm at the same time)
-    fi
-
-    if test "$forced_nomitshm" != "yes" -a "$no_x" != "yes" ; then
+    if test "$enable_mitshm" != "no" -a "$no_x" != "yes" ; then
       AC_CHECK_HEADER(X11/extensions/XShm.h,
          [AC_DEFINE(HAVE_MITSHM,1) LIBS="-lXext $LIBS"],
          AC_MSG_NOTICE(Compiling without the MITSHM X extension),
          [#include <X11/Xlib.h>])
     fi
 
-    AC_ARG_ENABLE(novidmode,
-              [  --enable-novidmode      do NOT use the XF86 vidmode extension],
-               AC_MSG_NOTICE(Compiling without the XF86 video mode extension),
+    AC_ARG_ENABLE(vidmode,
+              [  --disable-vidmode       do NOT use the XF86 vidmode extension])
+    if test "$enable_vidmode" = "no"; then
+               AC_MSG_NOTICE(Compiling without the XF86 video mode extension)
+    else
 	       AC_CHECK_HEADER(X11/extensions/xf86vmode.h,
 		 [AC_DEFINE(HAVE_XVIDMODE,1) LIBS="-lXxf86vm $LIBS"],
                  AC_MSG_NOTICE(Compiling without the XF86 video mode extension),
-                 [#include <X11/Xlib.h>]))
+                 [#include <X11/Xlib.h>])
+    fi
 fi
 
 PACKAGE_VERSION=`cat ${srcdir}/VERSION`
@@ -291,18 +294,23 @@ VERSION=${VV%%.*}
 VV=${VV#*.}
 SUBLEVEL=${VV%%.*}
 VV=${VV#*.}
-PATCHLEVEL=${VV%%.*}
-if test $PATCHLEVEL = $VV; then
-  PATCHLEVEL_=0
+PATCHLEVEL1=${VV%%.*}
+if test $PATCHLEVEL1 = $VV; then
+  PATCHLEVEL2=0
 else
   VV=${VV#*.}
-  PATCHLEVEL_=${VV%%.*}
+  PATCHLEVEL2=${VV%%.*}
 fi
-DOSEMU_VERSION_CODE=`echo "$(( ( $VERSION * 16777216 ) + ( $SUBLEVEL * 65536 ) + ( $PATCHLEVEL * 256 ) + $PATCHLEVEL_ ))"`
-PATCHLEVEL="${PATCHLEVEL}.${PATCHLEVEL_}"
+DOSEMU_VERSION_CODE=`echo "$(( ( $VERSION * 16777216 ) + ( $SUBLEVEL * 65536 ) + ( $PATCHLEVEL1 * 256 ) + $PATCHLEVEL2 ))"`
+PATCHLEVEL="${PATCHLEVEL1}.${PATCHLEVEL2}"
 THISVERSION="$VERSION.$SUBLEVEL.$PATCHLEVEL"
 EMUVER="$VERSION.$SUBLEVEL"
 RELEASE_DATE=`head -n1 $srcdir/ChangeLog | cut '-d ' -f1`
+
+AC_SUBST(VERSION)
+AC_SUBST(SUBLEVEL)
+AC_SUBST(PATCHLEVEL1)
+AC_SUBST(PATCHLEVEL2)
 
 AC_DEFINE_UNQUOTED(EMUVER, "$EMUVER")
 CONFIG_TIME=`date`
@@ -320,9 +328,8 @@ REQUIRED="tools commands tools/periph"
 
 dnl enable EXPERIMENTAL stuff
  AC_ARG_ENABLE(experimental,
-               [  --enable-experimental   enable configuration of EXPERIMENTAL stuff],
-               [experimental="yes"],[experimental="no"])
-  if test "$experimental" = "yes"; then
+               [  --enable-experimental   enable configuration of EXPERIMENTAL stuff])
+  if test "$enable_experimental" = "yes"; then
    AC_MSG_NOTICE(Allowing EXPERIMENTAL stuff to be configured...);
   else
    AC_MSG_NOTICE(EXPERIMENTAL stuff disabled...);
@@ -351,11 +358,11 @@ if test -x $srcdir/mkpluginhooks; then
       cd src
       for i in `cat ../plugin_incdirs`; do
         if test -f ../configure.ac; then
-          for j in $i/*; do
+          for j in $i/*.h; do
             ln -sf ../../$j plugin/include/`basename $j`
           done
         else
-          for j in $srcdir/src/$i/*; do
+          for j in $srcdir/src/$i/*.h; do
             ln -sf $j plugin/include/`basename $j`
           done 
         fi
@@ -373,19 +380,9 @@ dnl Setup to run plugin configure scripts
 AC_CONFIG_SUBDIRS(`touch ./plugin_configure; cat ./plugin_configure`)
 
 dnl Do compilation for GDB
- AC_ARG_ENABLE(dodebug,
-               [  --enable-dodebug        do compile for with debug info],
-               [dodebug="yes"],[dodebug="no"])
-  if test "$dodebug" = "yes"; then
-   AC_MSG_NOTICE(Compiling with debug info...);
-  else
-   AC_MSG_NOTICE(Compiling without debug info...);
-  fi
-
  AC_ARG_ENABLE(debug,
-               [  --enable-debug          compile with debug info],
-               [debug="yes"],[debug="no"])
-  if test "$debug" = "yes"; then
+               [  --enable-debug          compile with debug info])
+  if test "$enable_debug" = "yes"; then
    AC_MSG_NOTICE(Compiling with debug info...);
   else
    AC_MSG_NOTICE(Compiling without debug info...);
@@ -393,9 +390,8 @@ dnl Do compilation for GDB
 
 dnl Compile with ASPI support
  AC_ARG_ENABLE(aspi,
-               [  --enable-aspi           do compile with ASPI support],
-	       [aspi="yes"],[aspi="no"])
-  if test "$aspi" = "yes"; then
+               [  --disable-aspi          do NOT compile with ASPI support])
+  if test "$enable_aspi" != "no"; then
    AC_MSG_NOTICE(Compiling with ASPI support...);
    AC_DEFINE(ASPI_SUPPORT)
    AC_SUBST(ASPI_SUPPORT,"ASPI_SUPPORT=1")
@@ -404,10 +400,12 @@ dnl Compile with ASPI support
   fi
  
 dnl Do SB emulation
- AC_ARG_ENABLE(nosbemu,
-               [  --enable-nosbemu        do NOT use SoundBlaster emulator],
-               [AC_MSG_NOTICE(Compiling without SB Emulation...)],
-               [AC_MSG_NOTICE(Compiling with SB Emulation...)
+ AC_ARG_ENABLE(sbemu,
+               [  --disable-sbemu         do NOT use SoundBlaster emulator])
+ if test "$enable_sbemu" = "no"; then
+                AC_MSG_NOTICE(Compiling without SB Emulation...)
+ else
+                AC_MSG_NOTICE(Compiling with SB Emulation...)
                 AC_DEFINE(USE_SBEMU)
                 USE_SBEMU="USE_SBEMU=1"
 		AC_CHECK_LIB(gus, gus_close,
@@ -415,7 +413,8 @@ dnl Do SB emulation
 			USE_ULTRA="USE_ULTRA=1"
 			AC_DEFINE(USE_ULTRA)
 			AC_SUBST(USE_ULTRA)],)
-                AC_SUBST(USE_SBEMU)])
+                AC_SUBST(USE_SBEMU)
+ fi
 
 
 dnl DPMI requirements
@@ -432,7 +431,7 @@ INCDIR="-I\${top_builddir}/src/include -I\${top_builddir}/src/plugin/include ${S
 AC_SUBST(INCDIR)
 
 CFLAGS="-Wall -Wstrict-prototypes -Wmissing-declarations -Wnested-externs"
-if test "$dodebug" = "yes" -o "$debug" = "yes"; then
+if test "$enable_debug" = "yes"; then
   CFLAGS="$CFLAGS -gstabs+"
   AC_DEFINE(_DEBUG)
   OPT="-O"
@@ -445,9 +444,8 @@ fi
 
 dnl CPU emulator
  AC_ARG_ENABLE(cpuemu,
-               [  --enable-cpuemu         EXPERIMENTAL, compile with optional x86 emulation code],
-	       [cpuemu="yes"],[cpuemu="no"])
-  if test "$cpuemu" = "yes" -a "$experimental" = "yes"; then
+               [  --enable-cpuemu         EXPERIMENTAL, compile with optional x86 emulation code])
+  if test "$enable_cpuemu" = "yes" -a "$enable_experimental" = "yes"; then
    AC_MSG_NOTICE(Compiling with optional 386 emulation code...);
    AC_DEFINE_UNQUOTED(X86_EMULATOR)
    X86_EMULATOR="X86_EMULATOR=1"
@@ -481,10 +479,9 @@ AC_DEFINE_UNQUOTED(GASCODE16, $GASCODE16)
 if test "$CONFIG_HOST" = "linux"; then
  AC_MSG_NOTICE(Linux Specific build options...)
  dnl Linux net code
-  AC_ARG_ENABLE(nonet,
-               [  --enable-nonet          do NOT use Linux net code],
-               [nonet="yes"],[nonet="no"])
-  if test "$nonet" = "yes"; then
+  AC_ARG_ENABLE(net,
+               [  --disable-net           do NOT use Linux net code])
+  if test "$enable_net" = "no"; then
     AC_MSG_NOTICE(Compiling without network support...);
   else
     AC_MSG_NOTICE(Compiling with network support...);
@@ -554,7 +551,7 @@ if test "$GCC" = "yes" ; then
   fi
 
   AC_MSG_CHECKING(for glibc...)
-  set `echo -e '#include <features.h>\nXXAaZZ __GLIBC__ XXBbZZ __GLIBC_MINOR__'|gcc -E -|awk '/XXAaZZ/ {print $2 " " $4}'`
+  set `printf '%b\n' '#include <features.h>\nXXAaZZ __GLIBC__ XXBbZZ __GLIBC_MINOR__'|gcc -E -|awk '/XXAaZZ/ {print $2 " " $4}'`
   major=$1; minor=$2
   if test "$major" = "__GLIBC__"; then
     AC_MSG_ERROR([Sorry, you need glibc-2.1.3 or newer.])
@@ -580,12 +577,11 @@ AC_SUBST(LIBS)
 
 dnl Create output files. If you add new ones, please do it in order.
 
-AC_CONFIG_FILES([Makefile.conf])
+AC_CONFIG_FILES([Makefile.conf dosemu.spec])
 
 AC_CONFIG_COMMANDS([Makefile], 
 [ if ! test -f configure.ac; then 
     mkdir -p `(cd $srcdir; find . -type d)`
-    mkdir -p src/lib
     for i in `(cd $srcdir; find . -name Makefile)`; do
       echo  ln -sf $srcdir/$i $i
       ln -sf $srcdir/$i $i
@@ -722,6 +718,9 @@ AH_TEMPLATE([WANT_WINDOWS],
 
 AH_TEMPLATE([USE_SVGALIB],
 [ DEFINE this, if you want svgalib support ])
+
+AH_TEMPLATE([USE_GPM],
+[ DEFINE this, if you want GPM support ])
 
 AH_TEMPLATE([USE_PTHREADS],
 [ DEFINE this, if you want pthreads support ])

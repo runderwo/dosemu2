@@ -48,13 +48,14 @@ int kill_timeout=FOREVER;
 static  char *pipename_in, *pipename_out;
 int fdout, fdin;
 
+static int check_pid(int pid);
 
-int find_dosemu_pid(char *tmpfile, int local)
+static int find_dosemu_pid(char *tmpfile, int local)
 {
   DIR *dir;
   struct dirent *p;
   char *dn, *id;
-  int i,j,pid;
+  int i,j,pid=-1;
   static int once =1;
 
   dn = strdup(tmpfile);
@@ -73,7 +74,7 @@ int find_dosemu_pid(char *tmpfile, int local)
     exit(1);
   }
   i = 0;
-  while(p = readdir(dir)) {
+  while((p = readdir(dir))) {
           
     if(!strncmp(id,p->d_name,j) && p->d_name[j] >= '0' && p->d_name[j] <= '9') {
       pid = strtol(p->d_name + j, 0, 0);
@@ -106,7 +107,7 @@ int find_dosemu_pid(char *tmpfile, int local)
   return pid;
 }
 
-int check_pid(int pid)
+static int check_pid(int pid)
 {
   int fd;
   char buf[32], name[128];
@@ -152,7 +153,7 @@ static int switch_console(char new_console)
 }
 
 
-void handle_console_input(void)
+static void handle_console_input(void)
 {
   char buf[MHP_BUFFERSIZE];
   static char sbuf[MHP_BUFFERSIZE]="\n";
@@ -179,24 +180,26 @@ void handle_console_input(void)
 }
 
 
-void handle_dbg_input(void)
+static void handle_dbg_input(void)
 {
   char buf[MHP_BUFFERSIZE], *p;
   int n;
   do {
     n=read(fdin, buf, sizeof(buf));
-  } while (n == EAGAIN);
+  } while (n < 0 && errno == EAGAIN);
   if (n >0) {
     if ((p=strchr(buf,1))!=NULL) n=p-buf;
     write(1, buf, n);
     if (p!=NULL) exit(0);
   }
+  if (n == 0)
+    exit(1);
 }
 
 
 int main (int argc, char **argv)
 {
-  int numfds,n,flags,dospid;
+  int numfds,dospid;
   char *home_p;
   
   FD_ZERO(&readfds);
@@ -250,7 +253,7 @@ int main (int argc, char **argv)
     exit(1);
   }
 
-  write(fdout,"\n",1);
+  write(fdout,"r0\n",3);
   do {
     FD_SET(fdin, &readfds);
     FD_SET(0, &readfds);   /* stdin */

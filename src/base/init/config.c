@@ -99,6 +99,14 @@ static void dump_printf(char *fmt, ...)
     va_end(args);
 }
 
+static void log_dump_printf(char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    vlog_printf(-1, fmt, args);
+    va_end(args);
+}
+
 void dump_config_status(void *printfunc)
 {
     char *s;
@@ -215,8 +223,8 @@ void dump_config_status(void *printfunc)
     }
     (*print)("cardtype \"%s\"\npci_video %d\nfullrestore %d\n",
         s, config.pci_video, config.fullrestore);
-    (*print)("graphics %d\ngfxmemsize %d\nvga %d\n",
-        config.graphics, config.gfxmemsize, config.vga);
+    (*print)("gfxmemsize %d\nvga %d\n",
+        config.gfxmemsize, config.vga);
     switch (config.speaker) {
       case SPKR_OFF: s = "off"; break;
       case SPKR_NATIVE: s = "native"; break;
@@ -227,8 +235,6 @@ void dump_config_status(void *printfunc)
         config.dualmon, config.force_vt_switch, s);
     (*print)("update %d\nfreq %d\n",
         config.update, config.freq);
-    (*print)("timers %d\n",
-        config.timers);
     (*print)("tty_lockdir \"%s\"\ntty_lockfile \"%s\"\nconfig.tty_lockbinary %d\n",
         config.tty_lockdir, config.tty_lockfile, config.tty_lockbinary);
     (*print)("num_ser %d\nnum_lpt %d\nfastfloppy %d\nfull_file_locks %d\n",
@@ -294,8 +300,14 @@ void dump_config_status(void *printfunc)
 	}
     }
 
-    (*print)("\nSOUND:\nsb_base 0x%x\nsb_dma %d\nsb_hdma %d\nsb_irq %d\nmpu401_base 0x%x\nsb_dsp \"%s\"\nsb_mixer \"%s\"\n",
-        config.sb_base, config.sb_dma, config.sb_hdma, config.sb_irq, config.mpu401_base, config.sb_dsp, config.sb_mixer);
+    (*print)("\nSOUND:\nsb_base 0x%x\nsb_dma %d\nsb_hdma %d\nsb_irq %d\n"
+	"mpu401_base 0x%x\nsb_dsp \"%s\"\nsb_mixer \"%s\"\nsound_driver \"%s\"\n",
+        config.sb_base, config.sb_dma, config.sb_hdma, config.sb_irq,
+	config.mpu401_base, config.sb_dsp, config.sb_mixer, config.sound_driver);
+    (*print)("\nSOUND_OSS:\noss_min_frags 0x%x\noss_max_frags 0x%x\n"
+	     "oss_stalled_frags 0x%x\noss_do_post %d\noss_min_extra_frags 0x%x\n",
+        config.oss_min_frags, config.oss_max_frags, config.oss_stalled_frags,
+	config.oss_do_post, config.oss_min_extra_frags);
     (*print)("\ncli_timeout %d\n", config.cli_timeout);
     (*print)("\npic_watchdog %d\n", config.pic_watchdog);
     (*print)("\nJOYSTICK:\njoy_device0 \"%s\"\njoy_device1 \"%s\"\njoy_dos_min %i\njoy_dos_max %i\njoy_granularity %i\njoy_latency %i\n",
@@ -390,7 +402,7 @@ static int option_delete(int option, int *argc, char **argv)
 void secure_option_preparse(int *argc, char **argv)
 {
   char *opt;
-  int runningsuid = get_orig_uid() != get_orig_euid();
+  int runningsuid = can_do_root_stuff && !under_root_login;
 
   static char * get_option(char *key, int with_arg)
   {
@@ -442,6 +454,16 @@ void secure_option_preparse(int *argc, char **argv)
       exit(0);
     }
     dosemu_hdimage_dir_path = opt;
+  }
+
+  opt = get_option("-n", 0);
+  if (opt) {
+    if (runningsuid) {
+      fprintf(stderr, "The -n option to bypass the system configuration files "
+	      "is not allowed with sudo/suid-root\n");
+      exit(0);
+    }
+    DOSEMU_USERS_FILE = NULL;
   }
 }
 
@@ -549,13 +571,13 @@ static void config_post_process(void)
 	    c_printf("CONF: Forcing neutral Keyboard-layout, X-server will translate\n");
 	}
 #endif
-	config.console_video = config.vga = config.graphics = 0;
+	config.console_video = config.vga = 0;
 	config.emuretrace = 0;	/* already emulated */
     }
     else {
 	if (!can_do_root_stuff && config.console_video) {
 	    /* force use of Slang-terminal on console too */
-	    config.console = config.console_video = config.vga = config.graphics = 0;
+	    config.console = config.console_video = config.vga = 0;
 	    config.cardtype = 0;
 	    config.vbios_seg = 0;
 	    config.mapped_bios = 0;
@@ -731,7 +753,7 @@ config_init(int argc, char **argv)
     opterr = 0;
     if (strcmp(config_script_name, DEFAULT_CONFIG_SCRIPT))
       confname = config_script_path;
-    while ((c = getopt(argc, argv, "ABCcF:f:I:kM:D:P:VNtsgh:H:x:KL:m23456e:E:dXY:Z:o:Ou:U:")) != EOF) {
+    while ((c = getopt(argc, argv, "ABCcF:f:I:kM:D:P:VNtsgh:H:x:KL:mn23456e:E:dXY:Z:o:Ou:U:")) != EOF) {
 	usedoptions[(unsigned char)c] = c;
 	switch (c) {
 	case 'h':
@@ -941,6 +963,7 @@ config_init(int argc, char **argv)
 	    g_printf("Configuring as VGA video card & mapped ROM\n");
 	    config.vga = 1;
 	    config.mapped_bios = 1;
+	    config.console_video = 1;
 	    if (config.mem_size > 640)
 		config.mem_size = 640;
 	    break;
@@ -954,17 +977,13 @@ config_init(int argc, char **argv)
 	    warn("DOS will not be started\n");
 	    config.exitearly = 1;
 	    break;
-	case 't':
-	    g_printf("doing timer emulation\n");
-	    config.timers = 1;
+	case 't': /* obsolete "timer" option */
 	    break;
 	case 's':
 	    g_printf("using new scrn size code\n");
 	    sizes = 1;
 	    break;
-	case 'g':
-	    g_printf("turning graphics option on\n");
-	    config.graphics = 1;
+	case 'g': /* obsolete "graphics" option */
 	    break;
 
 	case 'x':
@@ -1006,6 +1025,9 @@ config_init(int argc, char **argv)
 	dump_config_status(0);
 	usage(basename);
 	exit(1);
+    } else {
+	if (debug_level('c') >= 8)
+	    dump_config_status(log_dump_printf);
     }
 }
 
@@ -1057,9 +1079,9 @@ usage(char *basename)
 	"    -e SIZE enable SIZE K EMS RAM\n"
 	"    -F use File as global config-file\n"
 	"    -f use dosrcFile as user config-file\n"
+	"    -n causes DOSEMU to bypass the system configuration file\n"
 	"    -L load and execute DEXE File\n"
 	"    -I insert config statements (on commandline)\n"
-	"    -g enable graphics modes (!%%#)\n"
 	"    -h dump configuration to stderr and exit (sets -D+c)\n"
 	"       0=no parser debug, 1=loop debug, 2=+if_else debug\n"
 	"    -H wait for dosdebug terminal at startup and pass dflags\n"
@@ -1071,7 +1093,6 @@ usage(char *basename)
 	"    -O write debug messages to stderr\n"
 	"    -o FILE put debug messages in file\n"
 	"    -P copy debugging output to FILE\n"
-	"    -t try new timer code (#)\n"
 	"    -u set user configuration variable 'confvar' prefixed by 'u_'.\n"
 	"    -V use BIOS-VGA video modes (!#%%)\n"
 	"    -v NUM force video card type\n"

@@ -7,7 +7,7 @@ Edited by
 
 Alistair MacDonald
 
-   For DOSEMU v1.0 pl2.0
+   For DOSEMU v1.2 pl0.0
 
    This document is the amalgamation of a series of technical README
    files which were created to deal with the lack of DOSEMU
@@ -881,8 +881,9 @@ Alistair MacDonald
         # ha, this one is allowed to do odds sound tricks :-)
       endif
 
-      # disable setting graphics mode per commandline option -g
-      $DOSEMU_OPTIONS = strdel($DOSEMU_OPTIONS, strchr($DOSEMU_OPTIONS,"g"),1);
+      # disable setting direct VGA console graphics mode per commandline option
+ -V
+      $DOSEMU_OPTIONS = strdel($DOSEMU_OPTIONS, strchr($DOSEMU_OPTIONS,"V"),1);
      _________________________________________________________________
 
 2.2.7. `Dry' testing your configuration
@@ -960,10 +961,6 @@ d)
    Want startup DOSEMU banner messages? Of course :-)
 
          dosbanner on
-
-   Timint is necessary for many programs to work.
-
-         timint on
 
    For "mathco", set this to "on" to enable the coprocessor during
    DOSEMU. This really only has an effect on kernels prior to 1.0.3.
@@ -1129,15 +1126,15 @@ d)
          charset { external "iso8859_1" internal "cp437" }
 
    For external character set the allowable character sets are:
-    "cp437", "cp737", "cp775", "cp850", "cp852", "cp857", "cp860","cp861",
-    "cp862", "cp863", "cp864", "cp865", "cp866", "cp869", "cp874",
+    "cp437", "cp737", "cp773", "cp775", "cp850", "cp852", "cp857", "cp860",
+    "cp861", "cp862", "cp863", "cp864", "cp865", "cp866", "cp869", "cp874",
     "iso8859-1", "iso8859-2", "iso8859-3", "iso8859-4", "iso8859-5",
     "iso8859-6", "iso8859-7", "iso8859-8", "iso8859-9", "iso8859-14",
     "iso8859-15"
 
    For the internal character set the allowable character sets are:
-    "cp437", "cp737", "cp775", "cp850", "cp852", "cp857", "cp860","cp861",
-    "cp862", "cp863", "cp864", "cp865", "cp866", "cp869", "cp874"
+    "cp437", "cp737", "cp773", "cp775", "cp850", "cp852", "cp857", "cp860",
+    "cp861", "cp862", "cp863", "cp864", "cp865", "cp866", "cp869", "cp874"
 
    The external character set is used to:
 
@@ -2300,13 +2297,12 @@ isk }
 
    To the dosemu hacker:
 
-     * There is a compile-time option USE_UNICODE_KEYB (on by default) to
-       active the While the old code already claimed to be
-       "client-server" (and was, to some extent), the new code introduces
-       a clean, well-defined interface between the `server', which is the
-       interface to DOS (int9, bios etc.), and the `clients', which are
-       the interfaces to the user frontends supported by dosemu.
-       Currently, clients are `raw', `slang' (i.e. terminal), and `X'.
+     * While the old code already claimed to be "client-server" (and was,
+       to some extent), the new code introduces a clean, well-defined
+       interface between the `server', which is the interface to DOS
+       (int9, bios etc.), and the `clients', which are the interfaces to
+       the user frontends supported by dosemu. Currently, clients are
+       `raw', `slang' (i.e. terminal), and `X'.
        Clients send keystrokes to the server through the interface
        mentioned above (which is defined in "keyboard.h"), the most
        important functions being `putkey()' and `putrawkey()'.
@@ -2364,7 +2360,7 @@ isk }
        the keyboard data port.
      * implement pause key
      * once everything is proved to work, remove the old keyboard code
-     * impelemnt utf8 and possibly iso2022 terminal support
+     * implement utf8 and possibly iso2022 terminal support
      _________________________________________________________________
 
 6. Old Keyboard Code
