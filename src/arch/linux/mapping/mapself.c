@@ -25,11 +25,6 @@
 #include "dosemu_config.h"
 #include "mapping.h"
 
-#undef mmap
-#define mmap libless_mmap
-#undef munmap
-#define munmap libless_munmap
-
 /* ------------------------------------------------------------ */
 
 static int selfmem_fd = -1;
