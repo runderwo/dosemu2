@@ -45,6 +45,9 @@
  * that it supports fonts in gfx modes.
  * -- sw
  *
+ * 2002/11/30: Started user font support. Needs some more work!
+ * -- eric@coli.uni-sb.de - Eric
+ *
  * DANG_END_CHANGELOG
  */
 
@@ -82,9 +85,6 @@
 #endif
 
 #if USE_DUALMON
-  #if USE_SCROLL_QUEUE
-    #error "dualmon: You can't have defined USE_SCROLL_QUEUE together with USE_DUALMON"
-  #endif
   #define BIOS_CONFIG_SCREEN_MODE (READ_WORD(BIOS_CONFIGURATION) & 0x30)
   #define IS_SCREENMODE_MDA (BIOS_CONFIG_SCREEN_MODE == 0x30)
   /* This is the text screen base, the DOS program actually has to use.
@@ -118,6 +118,7 @@ static void tty_char_out(unsigned char ch, int s, int attr);
 static void int10_old(void);
 #if X_GRAPHICS
 static void int10_new(void);
+static void vga_ROM_to_RAM(unsigned height, int bank);
 #endif
 
 static inline void set_cursor_shape(ushort shape) {
@@ -235,67 +236,14 @@ Scroll(us *sadr, int x0, int y0, int x1, int y1, int l, int att)
   }
 }
 
-/**************************************************************/
-/* scroll queue */
-
-#if USE_SCROLL_QUEUE
-
-int sq_head=0, sq_tail=0;
-
-#define SQ_INC(i) ((i+1)%(SQ_MAXLENGTH+1))
-
-struct scroll_entry *get_scroll_queue() {
-   if (sq_head==sq_tail) return NULL;
-   sq_tail=SQ_INC(sq_tail);
-   return &scroll_queue[sq_tail];
-}
-
-void clear_scroll_queue() {
-   while(get_scroll_queue());
-}
-
-volatile int video_update_lock = 0;
-
-void bios_scroll(int x0,int y0,int x1,int y1,int n,byte attr) {
-   struct scroll_entry *s;
-   int sqh2;
-
-   if (config.cardtype == CARD_NONE)
-     return;
-
-   VIDEO_UPDATE_LOCK();
-   sqh2=SQ_INC(sq_head);
-   if (n!=0 && !Video->is_mapped && sqh2!=sq_tail) {
-      s=&scroll_queue[sq_head];
-      if (sq_head!=sq_tail && 
-	 s->x0==x0 && s->y0==y0 && 
-	 s->x1==x1 && s->y1==y1 &&
-	 s->attr==attr)
-      {
-         s->n+=n;
-      }
-      else {
-	 s=&scroll_queue[sqh2];
-         s->x0=x0; s->y0=y0;
-         s->x1=x1; s->y1=y1;
-         s->n=n;   s->attr=attr;
-         sq_head=sqh2;
-      }
-   }
-   Scroll(screen_adr,x0,y0,x1,y1,n,attr);
-   VIDEO_UPDATE_UNLOCK();
-}
+#if USE_DUALMON
+  #define bios_scroll(x0,y0,x1,y1,n,attr) ({\
+   if (IS_SCREENMODE_MDA) Scroll((void *)MDA_PHYS_TEXT_BASE,x0,y0,x1,y1,n,attr); \
+   else Scroll(screen_adr,x0,y0,x1,y1,n,attr);\
+  })
 #else
-  #if USE_DUALMON
-    #define bios_scroll(x0,y0,x1,y1,n,attr) ({\
-     if (IS_SCREENMODE_MDA) Scroll((void *)MDA_PHYS_TEXT_BASE,x0,y0,x1,y1,n,attr); \
-     else Scroll(screen_adr,x0,y0,x1,y1,n,attr);\
-    })
-  #else
-    #define bios_scroll(x0,y0,x1,y1,n,attr) Scroll(screen_adr,x0,y0,x1,y1,n,attr)
-  #endif
+  #define bios_scroll(x0,y0,x1,y1,n,attr) Scroll(screen_adr,x0,y0,x1,y1,n,attr)
 #endif
-
 /* Output a character to the screen. */ 
 void char_out(unsigned char ch, int page)
 {
@@ -320,23 +268,7 @@ void tty_char_out(unsigned char ch, int s, int attr)
 /* i10_deb("tty_char_out: char 0x%02x, page %d, attr 0x%02x\n", ch, s, attr); */
 
   if (config.cardtype == CARD_NONE) {
-#if 1
-     /* FIXME
-      *
-      * For some unknown reasons (FILE *)stdout gets clobbered
-      * when we open a debug file (dbg_fd, -o/-O options on commandline)
-      * and even fputc(ch, stdout) then does not write anything.
-      * I could not find out _where_ this happens.
-      *
-      * However, writing directly to fd 1 still works. Therefore, because
-      * we do setbuf(stdout, NULL) anyway (src/base/init/init.c), we work
-      * around here this way.
-      *                         --Hans, 2001/04/27
-      */
-     write(1, &ch, 1);
-#else
      putchar (ch);
-#endif
      return;
   }
 
@@ -439,7 +371,6 @@ clear_screen(int s, int att)
   set_bios_cursor_x_position(s, 0);
   set_bios_cursor_y_position(s, 0);
   cursor_row = cursor_col = 0;
-  clear_scroll_queue();
 }
 
 
@@ -488,12 +419,25 @@ static boolean X_set_video_mode(int mode) {
   }
 
   if(adjust_font_size) {
+    i10_msg("set_video_mode: font size %d lines\n", vga_font_height);
+
+    CRTC_set_index(9);
+    CRTC_write_value((CRTC_read_value() & ~0x1f) + vga_font_height -1);
+    vmi->char_height = vga_font_height; /* should already be done, */
+    /* as side effect of the CRTC write access in crtcemu... */
+
     text_scanlines = vmi->height;
     li = text_scanlines / vga_font_height;
     if(li > MAX_LINES) li = MAX_LINES;
     WRITE_BYTE(BIOS_ROWS_ON_SCREEN_MINUS_1, li - 1);
     WRITE_WORD(BIOS_FONT_HEIGHT, vga_font_height);
-    if(vmi->mode_class == TEXT) X_set_textsize(co, li);
+    if(vmi->mode_class == TEXT) {
+      /* we must also load a FONT here                */
+      /* but we can do this later where int 0x43      */
+      /* is set (below, in -this- function).          */
+      /* (as long as X_set_textsize does not need it) */
+      X_set_textsize(co, li);
+    }
     return 1;
   }
 
@@ -519,15 +463,15 @@ static boolean X_set_video_mode(int mode) {
   WRITE_BYTE(BIOS_VIDEO_MODE, vmi->VGA_mode & 0x7f);
   WRITE_BYTE(BIOS_CURRENT_SCREEN_PAGE, 0);
 
-  if(vmi->mode_class == TEXT) {
-    clear_scroll_queue();
-  }
-
   li = vmi->text_height;
   co = vmi->text_width;
   if(li > MAX_LINES) li = MAX_LINES;
   vga_font_height = vmi->char_height;
   text_scanlines = vmi->height;
+  if (vmi->mode_class == TEXT) {
+    vga_font_height = text_scanlines / 25;
+    vmi->char_height = vga.char_height = vga_font_height;
+  }
 
   WRITE_BYTE(BIOS_ROWS_ON_SCREEN_MINUS_1, li - 1);
   WRITE_WORD(BIOS_SCREEN_COLUMNS, co);
@@ -589,6 +533,13 @@ static boolean X_set_video_mode(int mode) {
       break;
     default:
       u = vgaemu_bios.font_8;
+  }
+
+  if (vmi->mode_class == TEXT) {
+    v_printf("INT10: X_set_video_mode: 8x%d ROM font -> bank 0\n",
+             vga.char_height);
+    vga_ROM_to_RAM(vga.char_height, 0); /* 0 is default bank */
+    i10_msg("activated font bank 0\n");
   }
 
   SETIVEC(0x43, 0xc000, u);
@@ -672,7 +623,6 @@ boolean set_video_mode(int mode) {
 #endif
     
 do_text_mode:
-    clear_scroll_queue();
 
     li=text_scanlines/vga_font_height;
     if (li>MAX_LINES) li=MAX_LINES;
@@ -770,6 +720,55 @@ static void return_state(Bit8u *statebuf) {
 	memset(statebuf + 0x33, 0, 13);
 }
 
+/* helpers for font processing - eric@coli.uni-sb.de  11/2002 */
+/* only for TEXT mode: Otherwise, int 0x43 is used...         */
+
+#ifdef X_GRAPHICS
+static void vga_RAM_to_RAM(unsigned height, unsigned char chr, unsigned count,
+                           unsigned seg, unsigned ofs, int bank)
+{
+  char *dst;
+  unsigned i;
+  unsigned long src;
+  unsigned bankofs;
+  if (!count) {
+    v_printf("Tried to load 0 characters of font data???\n");
+    return;
+  }
+  src = seg;
+  src <<= 4;
+  src += ofs;
+  bankofs = ((bank & 3) << 1) + ((bank & 4) >> 2);
+  bankofs <<= 13; /* unit is 8k */
+  i10_msg("load 8x%d font (char %d..%d) 0x%04x:0x%04x -> bank %d\n",
+          height, chr, chr+count-1, seg, ofs, bank);
+  dst = vga.mem.base + 0x20000 + bankofs;
+  /* copy count characters of height bytes each to vga_font_mem */
+  for(i = chr; i < chr + count; i++)
+    MEMCPY_2UNIX(dst + i * 32, src + i * height, height);
+}
+
+static void vga_ROM_to_RAM(unsigned height, int bank)
+{
+  unsigned seg, ofs;
+  seg = 0xc000;
+  switch (height) { /* ALTERNATE ROM fonts not yet usable! */
+  case 8:
+    ofs = vgaemu_bios.font_8;
+    break;
+  case 14:
+    ofs = vgaemu_bios.font_14;
+    break;
+  case 16:
+    ofs = vgaemu_bios.font_16;
+    break;
+  default:
+    v_printf("Error! Tried to load 8x%d ROM font!?\n",height);
+    ofs = vgaemu_bios.font_16;
+  }
+  vga_RAM_to_RAM(height,0,256,seg,ofs,bank);
+}
+#endif /* X_GRAPHICS */
 
 /******************************************************************/
 
@@ -786,7 +785,7 @@ int int10(void)
   return 1;
 }
 
-void int10_old()
+void int10_old(void) /* with dualmon */
 {
   /* some code here is copied from Alan Cox ***************/
   int x, y;
@@ -823,7 +822,6 @@ void int10_old()
 #if 0
   v_printf("VID: int10, ax=%04x bx=%04x\n",LWORD(eax),LWORD(ebx));
 #endif
-  NOCARRY;
 
   switch (HI(ax)) {
   case 0x0:			/* define mode */
@@ -832,7 +830,6 @@ void int10_old()
     vga_font_height=text_scanlines/25;
     if (!set_video_mode(LO(ax))) {
        v_printf("int10,0: set_video_mode failed\n");
-       CARRY;
     }
     break;
 
@@ -849,7 +846,6 @@ void int10_old()
     v_printf("set cursor: pg:%d x:%d y:%d\n", page, x, y);
     if (page > 7) {
       v_printf("ERROR: video error (setcur/page>7: %d)\n", page);
-      CARRY;
       return;
     }
     if (x >= co || y >= li) {
@@ -867,15 +863,17 @@ void int10_old()
     break;
 
   case 0x3:			/* get cursor pos/shape */
+    /* output start & end scanline even if the requested page is invalid */
+    LWORD(ecx) = READ_WORD(BIOS_CURSOR_SHAPE);
+
     page = HI(bx);
     if (page > 7) {
+      LWORD(edx) = 0;
       v_printf("ERROR: video error(0x3 page>7: %d)\n", page);
-      CARRY;
-      return;
+    } else {
+      LO(dx) = get_bios_cursor_x_position(page);
+      HI(dx) = get_bios_cursor_y_position(page);
     }
-    REG(edx) = (get_bios_cursor_y_position(page) << 8) 
-              | get_bios_cursor_x_position(page);
-    REG(ecx) = READ_WORD(BIOS_CURSOR_SHAPE);
     break;
 
   case 0x5:
@@ -887,7 +885,6 @@ void int10_old()
       v_printf("VID: change page from %d to %d!\n", READ_BYTE(BIOS_CURRENT_SCREEN_PAGE), page);
       if (page > max_page) {
 	v_printf("ERROR: video error: set bad page %d\n", page);
-	CARRY;
 	break;
       }
       if (config.console_video) set_vc_screen_page(page);
@@ -919,7 +916,6 @@ void int10_old()
     page = HI(bx);
     if (page > max_page) {
       v_printf("ERROR: read char from bad page %d\n", page);
-      CARRY;
       break;
     }
     sm = SCREEN_ADR(page);
@@ -1198,12 +1194,8 @@ void int10_old()
 
   case 0x4:			/* get light pen */
     v_printf("ERROR: video error(no light pen)\n");
-#if 0
-    CARRY;
-#else
     HI(ax) = 0;   /* "light pen switch not pressed" */
                   /* This is how my VGA BIOS behaves [rz] */
-#endif    
     return;
 
   case 0x1a:			/* get display combo */
@@ -1249,7 +1241,8 @@ void int10_old()
       case 0x10:
 	vga_font_height = HI(bx);
 	v_printf("loaded font completely ignored except size!\n");
-	/* the rest is ignored for now */
+        v_printf("hint: new int 10 + FONT_LAB* process this :-)\n");
+        /* the rest is ignored for now */
 	goto more_lines;
 	
       more_lines:
@@ -1258,7 +1251,6 @@ void int10_old()
 	    {
 	      li = old_li; /* not that it changed */
 	      vga_font_height = old_font_height;
-	      CARRY;
 	    }
 #if 0
 	  else if (old_li < li) 
@@ -1361,13 +1353,12 @@ void int10_old()
 
   default:
     v_printf("new unknown video int 0x%x\n", LWORD(eax));
-    CARRY;
     break;
   }
 }
 
 #if X_GRAPHICS
-void int10_new()
+void int10_new(void) /* with X but without dualmon */
 {
   /* some code here is copied from Alan Cox ***************/
   int x, y;
@@ -1390,16 +1381,14 @@ void int10_new()
 #if 0
   i10_msg("ax %04x, bx %04x\n",LWORD(eax), LWORD(ebx));
 #endif
-  NOCARRY;
 
   switch(HI(ax)) {
     case 0x00:		/* set video mode */
       i10_msg("set video mode: 0x%x\n", LO(ax));
       /* set appropriate font height for 25 lines */
-      vga_font_height = text_scanlines / 25;	// ??? -> into set_video_mode()!
+      vga_font_height = text_scanlines / 25;
       if(!set_video_mode(LO(ax))) {
         i10_msg("set_video_mode() failed\n");
-        CARRY;
       }
       break;
 
@@ -1418,7 +1407,6 @@ void int10_new()
       i10_deb("set cursor pos: page %d, x.y %d.%d\n", page, x, y);
       if(page > 7) {
         i10_msg("set cursor pos: page > 7: %d\n", page);
-        CARRY;
         return;
       }
       if (x >= co || y >= li) {
@@ -1437,15 +1425,18 @@ void int10_new()
 
 
     case 0x03:		/* get cursor pos/shape */
+      /* output start & end scanline even if the requested page is invalid */
+      LWORD(ecx) = READ_WORD(BIOS_CURSOR_SHAPE);
+
       page = HI(bx);
       if (page > 7) {
+        LWORD(edx) = 0;
         i10_msg("get cursor pos: page > 7: %d\n", page);
-        CARRY;
-        return;
+      } else {
+        LO(dx) = get_bios_cursor_x_position(page);
+        HI(dx) = get_bios_cursor_y_position(page);
       }
-      LO(dx) = get_bios_cursor_x_position(page);
-      HI(dx) = get_bios_cursor_y_position(page);
-      LWORD(ecx) = READ_WORD(BIOS_CURSOR_SHAPE);
+
       i10_deb(
         "get cursor pos: page %u, x.y %u.%u, shape %u-%u\n",
         page, LO(dx), HI(dx), HI(cx), LO(cx)
@@ -1465,7 +1456,6 @@ void int10_new()
       i10_deb("set display page: from %d to %d\n", READ_BYTE(BIOS_CURRENT_SCREEN_PAGE), page);
       if(page > max_page) {
 	i10_msg("set display page: bad page %d\n", page);
-	CARRY;
 	break;
       }
       if (config.console_video) set_vc_screen_page(page);
@@ -1513,7 +1503,6 @@ void int10_new()
       page = HI(bx);
       if (page > max_page) {
         i10_msg("read char: invalid page %d\n", page);
-        CARRY;
         break;
       }
       if(vga.mode_class == TEXT) {
@@ -1587,7 +1576,10 @@ void int10_new()
 
 
     case 0x0b:		/* set bg/border color */
-      i10_msg("set bg/border color: NOT IMPLEMENTED\n");
+      /* vgaemu does not use it!                             */
+      /* HI(bx) is supposed to be 0 here, no reason given.   */
+      i10_msg("set bg/border color to %x\n",LO(bx));
+      Attr_set_entry(0x11 /* OVERSCAN */, LO(bx));
       break;
 
 
@@ -1652,7 +1644,6 @@ void int10_new()
        */
       if(LO(ax) == 3) char_blink = LO(bx) & 1;
 
-#if X_GRAPHICS
       /* root@zaphod */
       /* Palette register stuff. Only for the VGA emulator used by X */
       if(config.X) {
@@ -1765,7 +1756,6 @@ void int10_new()
              break;
          }
       }
-#endif
       break;
 
 
@@ -1776,39 +1766,78 @@ void int10_new()
         unsigned ofs, seg;
         unsigned rows, char_height;
 
-        i10_deb("char gen: func 0x%02x, bx 0x%04x\n", LO(ax), LWORD(ebx));
+        i10_msg("char gen: func 0x%02x, bx 0x%04x\n", LO(ax), LWORD(ebx));
 
         switch(LO(ax)) {
+          case 0x03:
+            /* For EGA: Select fonts xx and yy for attrib bit 3 1/0 */
+            /* For VGA: Same, but using Xxx and Yyy. BL is 00XYxxyy */
+            /* ***          see also vgaemu_put_char()         ***  */
+            /* the X/Y bits mean 8k offset, xx/yy use 16k units     */
+            /* see: sequencer, map select, data[3] ... sequemu.c    */
+            Seq_set_index(3);
+            Seq_write_value(LO(bx));
+            i10_msg("sequencer char map select: 0x%02x\n", LO(bx));
+            break;
+
           case 0x01:		/* load 8x14 charset */
           case 0x11:
             vga_font_height = 14;
+            vga_ROM_to_RAM(14, LO(bx));
             goto more_lines;
 
           case 0x02:		/* load 8x8 charset */
           case 0x12:
             vga_font_height = 8;
+            vga_ROM_to_RAM(8, LO(bx));
             goto more_lines;
 
           case 0x04:		/* load 8x16 charset */
           case 0x14:
             vga_font_height = 16;
+            vga_ROM_to_RAM(16, LO(bx));
             goto more_lines;
 
           /* load a custom font */
-          /* for now just ust it's size to set things */
           case 0x00:
           case 0x10:
             vga_font_height = HI(bx);
-            i10_deb("loaded font completely ignored except size!\n");
-            /* the rest is ignored for now */
+            /* *************************************************************
+             * func 00 would not change as much as func 0x10, which would  *
+             * reprogram registers 9 = bh-1 (mode 7 only, max scan line),  *
+             * a = bh-2 (cursor start), b = 0 (cursor end),                *
+             * 12 = (rows+1) / (bh-1) (vertical display end),              *
+             * 14 = bh-1 (underline loc). Recalcluates CRT buffer length.  *
+             * Max character rows is also recalculated, as well as by/char *
+             * ... and page 0 must be active                               *
+             * ES:BP -> table CX = count of chars DX = from which char on  *
+             * BL = which block to load into map2 BH = bytes / char        *
+             ************************************************************* */
+            vga_RAM_to_RAM(HI(bx), LO(dx), LWORD(ecx),
+                REG(es), LWORD(ebp), LO(bx));
+            i10_msg("some user font data loaded\n");
             goto more_lines;
 
           more_lines:
+            /* Also activating the target bank - some programs */
+            /* seem to assume this. Sigh...                    */
+            
+            /* FIXME: only useful when using VGAEMU, add a #define   */
+            Seq_set_index(3);     /* sequencer: character map select */
+            /* available: x, y, c...!?    transforming bitfields...  */
+            x = (LO(bx) & 3) | ((LO(bx) & 4) << 2);
+            x |= ((LO(bx) & 3) << 2) | ((LO(bx) & 4) << 3);
+            Seq_write_value(x);         /* set bank N for both fonts */
+            i10_msg("activated font bank %d (0x%02x)\n",
+                (LO(bx) & 7), x);
+            /* | (1 << 16) is "only update font stuff" */
             if(!set_video_mode(video_mode | (1 << 16))) {
               li = old_li;	/* not that it changed */
+              v_printf("Problem changing font height %d->%d\n",
+                  old_font_height, vga_font_height);
               vga_font_height = old_font_height;
-              CARRY;
             }
+            WRITE_WORD(BIOS_FONT_HEIGHT, vga_font_height);
             break;
 
           case 0x20:		/* set 8x8 gfx chars */
@@ -1820,6 +1849,8 @@ void int10_new()
           case 0x22:		/* load 14x8 gfx chars */
           case 0x23:		/* load 8x8 gfx chars */
           case 0x24:		/* load 16x8 gfx chars */
+          /* BL=0/1/2/3 for DL/14/25/43 rows                   */
+          /* CX is byte / char, ES:BP is pointer for case 0x21 */
             seg = 0xc000;
             switch(LO(ax)) {
               case 0x21:
@@ -1840,7 +1871,7 @@ void int10_new()
                 char_height = 16;
                 break;
             }
-            rows = LO(dx);
+            rows = LO(dx); /* gets changed for BL != 0 now: */
             switch(LO(bx)) {
               case 1:
                 rows = 14;
@@ -1855,7 +1886,10 @@ void int10_new()
             SETIVEC(0x43, seg, ofs);
             WRITE_BYTE(BIOS_ROWS_ON_SCREEN_MINUS_1, rows - 1);
             WRITE_WORD(BIOS_FONT_HEIGHT, char_height);
-            i10_deb(
+            /* Does NOT load any video font RAM                  */
+            /* This is for GRAPHICS mode only. No vga_R*...      */
+            /* No setting of the CRTC font size either...        */
+            i10_msg(
               "load gfx font: height %u, rows %u, addr 0x%04x:0x%04x\n",
               char_height, rows, seg, ofs
             );
@@ -1921,25 +1955,34 @@ void int10_new()
           break;
 
         case 0x20:	/* select alternate print screen */
+          /* Would install a handler of the video               */
+          /* BIOS that can do more modes than the main BIOS     */
+          /* handler (which is often limited to 80x25 text)     */
           i10_deb("select alternate prtsc: NOT IMPLEMENTED\n");
           break;
 
         case 0x30:	/* select vertical resolution */
           {
-            static int scanlines[3] = {200, 350, 400};
-
-            if((unsigned) LO(ax) < 3) {
+            static int scanlines[4] = {200, 350, 400, 480};
+            /* 480 (undocumented) (int 0x10 AH=12 BL=30)          */
+            /* "will take effect on the next mode set" is         */
+            /* not yet implemented                                */
+            if((unsigned) LO(ax) < 4) {
               text_scanlines = scanlines[LO(ax)];
               LO(ax) = 0x12;  
               i10_deb("select vert res: %d lines", text_scanlines);
             }
             else {
-              i10_deb("select vert res: invalid arg 0x%02x", LO(ax));
+              i10_msg("select vert res: invalid arg 0x%02x", LO(ax));
             }
           }
           break;
 
         case 0x32:	/* enable/disable cpu access to video ram */
+          /* FIXME: implement this XXX */
+          /* would probably modify port 0x3c2, misc output, which */
+          /* also is responsible for 3b4<->3d4, pixelclock, sync  */
+          /* polarity, odd/even page selection, ...               */
           if(LO(ax) == 0)
             i10_deb("disable cpu access to video (ignored)\n");
           else
@@ -1955,10 +1998,20 @@ void int10_new()
 #endif
 
         case 0x36:	/* video screen on/off */
-          if(LO(ax) == 0)
-            i10_deb("turn video screen on (ignored)\n");
-          else
-            i10_deb("turn video screen off (ignored)\n");
+          /* VGAEMU oriented (do port 3c0 flag as well?)            */
+          /* (probably not: port 0x3c0|=0x20 -> all overscan color) */
+          /* FIXME: only useful when using VGAEMU, add a #define    */
+          /* Will influence vga.config.video_off -> X_update_screen */
+          Seq_set_index(1);             /* sequencer: clocking mode */
+          if(LO(ax) == 0) {
+            i10_deb("turn video screen on (partially ignored)\n");
+             Seq_write_value(vga.seq.data[1] & ~0x20);
+             /* bit 0x20 is screen refresh off */
+          } else {
+             i10_deb("turn video screen off (partially ignored)\n");
+             Seq_write_value(vga.seq.data[1] | 0x20);
+             /* bit 0x20 is screen refresh off */
+          }
 #if 0
           LO(ax) = 0x12;  
 #endif
@@ -2051,15 +2104,12 @@ void int10_new()
 
     case 0x1c:		/* save/restore video state */
       i10_msg("save/restore: NOT IMPLEMETED\n");
-      CARRY;
       break;
 
 
-#if X_GRAPHICS
     case 0x4f:		/* vesa interrupt */
       if(config.X) do_vesa_int();
       break;
-#endif
 
 
     case 0xcc:		/* called from NC 5.0 */
@@ -2076,7 +2126,6 @@ void int10_new()
 
     default:
       i10_msg("unknown video int 0x%04x\n", LWORD(eax));
-      CARRY;
       break;
   }
 }

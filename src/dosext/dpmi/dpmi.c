@@ -630,8 +630,8 @@ static int SetSelector(unsigned short selector, unsigned long base_addr, unsigne
     D_printf("DPMI: set_ldt_entry() failed\n");
     return -1;
   }
-  D_printf("DPMI: SetSelector: 0x%04x base=0x%lx limit=0x%x\n",
-    selector, base_addr, limit);
+  D_printf("DPMI: SetSelector: 0x%04x base=0x%lx limit=0x%x big=%i\n",
+    selector, base_addr, limit, is_big);
   Segments[ldt_entry].base_addr = base_addr;
   Segments[ldt_entry].limit = limit;
   Segments[ldt_entry].type = type;
@@ -735,21 +735,32 @@ static void FreeAllDescriptors(void)
     }
 }
 
-int ConvertSegmentToDescriptor(unsigned short segment)
+static int ConvertSegmentToDescriptor32(unsigned short segment, int limit_is_32)
 {
   unsigned long baseaddr = segment << 4;
+  unsigned long limit = limit_is_32 ? 0xffffffff : 0xffff;
   unsigned short selector;
   int i;
   D_printf("DPMI: convert seg %#x to desc\n", segment);
   for (i=1;i<MAX_SELECTORS;i++)
-    if ((Segments[i].base_addr==baseaddr) && (Segments[i].limit==0xffff) &&
+    if ((Segments[i].base_addr==baseaddr) && (Segments[i].limit==limit) &&
 	(Segments[i].type==MODIFY_LDT_CONTENTS_DATA) && Segments[i].used)
       return (i<<3) | 0x0007;
   D_printf("DPMI: SEG at base=%#lx not found, allocate a new one\n", baseaddr);
   if (!(selector = AllocateDescriptors(1))) return 0;
-  if (SetSelector(selector, baseaddr, 0xffff, DPMIclient_is_32,
+  if (SetSelector(selector, baseaddr, limit, DPMIclient_is_32,
                   MODIFY_LDT_CONTENTS_DATA, 0, 0, 0, 0)) return 0;
   return selector;
+}
+
+int ConvertSegmentToDescriptor(unsigned short segment)
+{
+  return ConvertSegmentToDescriptor32(segment, DPMIclient_is_32);
+}
+
+static int ConvertSegmentToDescriptor16(unsigned short segment)
+{
+  return ConvertSegmentToDescriptor32(segment, 0);
 }
 
 static inline unsigned short GetNextSelectorIncrementValue(void)
@@ -766,14 +777,14 @@ static int SystemSelector(unsigned short selector)
   return 0;
 }
 
-static inline int ValidSelector(unsigned short selector)
+int ValidSelector(unsigned short selector)
 {
   if (selector && ((selector >> 3) < MAX_SELECTORS) && (selector & 4) == 4)
     return 1;
   return 0;
 }
 
-static int ValidAndUsedSelector(unsigned short selector)
+int ValidAndUsedSelector(unsigned short selector)
 {
   if (ValidSelector(selector) && Segments[selector >> 3].used)
     return 1;
@@ -1356,7 +1367,7 @@ static void do_int31(struct sigcontext_struct *scp)
 #endif    
     break;
   case 0x0002:
-    if (!(_LWORD(eax)=ConvertSegmentToDescriptor(_LWORD(ebx)))) {
+    if (!(_LWORD(eax)=ConvertSegmentToDescriptor16(_LWORD(ebx)))) {
       _LWORD(eax) = 0x8011;
       _eflags |= CF;
     }
@@ -1392,7 +1403,7 @@ static void do_int31(struct sigcontext_struct *scp)
   case 0x0009:
     CHECK_SELECTOR(_LWORD(ebx));
     { int x;
-      if ((x=SetDescriptorAccessRights(_LWORD(ebx), _ecx & (DPMIclient_is_32 ? 0xffff : 0x00ff))) !=0) {
+      if ((x=SetDescriptorAccessRights(_LWORD(ebx), _LWORD(ecx))) !=0) {
         if (x == -1) _LWORD(eax) = 0x8021;
         else if (x == -2) _LWORD(eax) = 0x8022;
         else _LWORD(eax) = 0x8025;
@@ -1581,15 +1592,6 @@ err:
       REG(ds) = rmreg->ds;
       REG(fs) = rmreg->fs;
       REG(gs) = rmreg->gs;
-      if (_LWORD(eax)==0x0300) {
-        if (_LO(bx)==0x21)
-          D_printf("DPMI: int 0x21 fn %04x\n",LWORD(eax));
-	REG(cs) = ((us *) 0)[(_LO(bx) << 1) + 1];
-	REG(eip) = ((us *) 0)[_LO(bx) << 1];
-      } else {
-	REG(cs) = rmreg->cs;
-	REG(eip) = (long) rmreg->ip;
-      }
       if (!(rmreg->sp==0)) {
 	REG(ss) = rmreg->ss;
 	REG(esp) = (long) rmreg->sp;
@@ -1606,36 +1608,29 @@ err:
       if (tmp) E_MPROT_STACK(tmp_ssp);
 #endif
       LWORD(esp) -= 2 * (_LWORD(ecx));
-      if (_LWORD(eax)==0x0301)
-	       LWORD(esp) -= 4;
-      else {
-	LWORD(esp) -= 6;
-#ifdef X86_EMULATOR
-	tmp_ssp = rm_ssp+rm_sp;
-	tmp = E_MUNPROT_STACK(tmp_ssp);
-#endif
-	pushw(rm_ssp, rm_sp, LWORD(eflags));
-#ifdef X86_EMULATOR
-	if (tmp) E_MPROT_STACK(tmp_ssp);
-#endif
-	REG(eflags) &= ~(IF|TF);
+      in_dpmi_dos_int=1;
+      REG(cs) = DPMI_SEG;
+      LWORD(eip) = DPMI_OFF + HLT_OFF(DPMI_return_from_realmode);
+      switch (_LWORD(eax)) {
+        case 0x0300:
+          if (_LO(bx)==0x21)
+            D_printf("DPMI: int 0x21 fn %04x\n",LWORD(eax));
+	  do_int(_LO(bx));
+	  break;
+        case 0x0301:
+	  fake_call_to(rmreg->cs, rmreg->ip);
+	  break;
+        case 0x0302:
+	  fake_int_to(rmreg->cs, rmreg->ip);
+	  break;
       }
+
 /* --------------------------------------------------- 0x300:
      RM |  FC90C   |
 	| dpmi_seg |
 	|  flags   |
 	| cx words |
    --------------------------------------------------- */
-#ifdef X86_EMULATOR
-      tmp_ssp = rm_ssp+rm_sp;
-      tmp = E_MUNPROT_STACK(tmp_ssp);
-#endif
-      pushw(rm_ssp, rm_sp, DPMI_SEG);
-      pushw(rm_ssp, rm_sp, DPMI_OFF + HLT_OFF(DPMI_return_from_realmode));
-#ifdef X86_EMULATOR
-      if (tmp) E_MPROT_STACK(tmp_ssp);
-#endif
-      in_dpmi_dos_int=1;
     }
 #ifdef SHOWREGS
     if (debug_level('e')==0) {
@@ -2285,7 +2280,6 @@ void run_dpmi(void)
 	D_printf ("DPMI: do_vm86,  %04x:%04lx %08lx %08lx %08x\n", REG(cs),
 		REG(eip), REG(esp), REG(eflags), dpmi_eflags);
     }
-
     in_vm86 = 1;
     retval=DO_VM86(&vm86s);
     in_vm86=0;
@@ -2344,6 +2338,7 @@ void run_dpmi(void)
 #ifdef SHOWREGS
     show_regs(__FILE__, __LINE__);
 #endif
+    D_printf("DPMI: retval=%x %x:%x\n", VM86_ARG(retval), _CS, _IP);
 		switch (VM86_ARG(retval)) {
 		  case 0x1c:	/* ROM BIOS timer tick interrupt */
 		  case 0x23:	/* DOS Ctrl+C interrupt */
@@ -2789,6 +2784,8 @@ static void do_cpu_exception(struct sigcontext_struct *scp)
   unsigned char dd = debug_level('M');
   set_debug_level('M', 1);
 #endif
+
+  mhp_intercept("\nCPU Exception occured, invoking dosdebug\n\n", "+9M");
 
 #ifdef TRACE_DPMI
   if (debug_level('t') && (_trapno == 1)) {

@@ -148,6 +148,7 @@
 #define CFG_CRTC_ADDR_MODE      2
 #define CFG_CRTC_HEIGHT         3
 #define CFG_CRTC_WIDTH          4
+#define CFG_CRTC_LINE_COMPARE   5
 
 
 /*
@@ -317,6 +318,7 @@ typedef struct {
 typedef struct {
   unsigned addr_mode;
   unsigned cursor_location;
+  unsigned line_compare;
   unsigned char index;
   unsigned char data[CRTC_MAX_INDEX + 1];
   unsigned char dirty[CRTC_MAX_INDEX + 1];
@@ -336,6 +338,9 @@ typedef struct {
   unsigned char mode;
   unsigned char index;
   unsigned char data[SEQ_MAX_INDEX + 1];
+  /* Helpful offsets for font processing    */
+  /* depends on map_select which is data[3] */
+  unsigned fontofs[2];
 } vga_seq_type;
 
 
@@ -402,6 +407,7 @@ typedef struct {
   vga_reconfig_type reconfig;		/* indicate when essential things have changed */
   int width;				/* in pixels */
   int height;				/* dto */
+  int line_compare;			/* dto */
   int scan_len;				/* in bytes */
   int text_width;
   int text_height;

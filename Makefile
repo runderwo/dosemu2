@@ -19,7 +19,7 @@ top_builddir=.
 -include Makefile.conf
 
 Makefile.conf: $(srcdir)/Makefile.conf.in $(srcdir)/configure $(srcdir)/default-configure
-	@echo "Running $(srcdir)default-configure ...";
+	@echo "Running $(srcdir)/default-configure ...";
 	@if [ -f config.status ]; then \
 	  ./config.status --recheck; ./config.status; \
 	else \
@@ -68,6 +68,6 @@ pristine distclean mrproper:  docsclean mididclean
 	(cd setup/demudialog; make clean)
 	(cd setup/parser; make clean)
 	rm -rf ./dist/tmp
-	rm -rf autom4te.cache
+	rm -rf autom4te*.cache
 	$(srcdir)/mkpluginhooks clean
 

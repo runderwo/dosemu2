@@ -55,14 +55,8 @@ DOCS= $(REALTOPDIR)/man
 
 LIBPATH=lib
 
-default: version include/confpath.h doslibnew \
+default: version include/confpath.h doslib \
 	../etc/xtermdos ../etc/xinstallvgafont
-
-all:	dosemu
-
-debug:
-	rm $(BINPATH)/bin/$(DOSBIN)
-	$(MAKE) $(BINPATH)/bin/$(DOSBIN)
 
 ../etc/xtermdos:	$(REALTOPDIR)/etc/xtermdos.sh
 	@echo "#!/bin/sh" > ../etc/xtermdos
@@ -99,7 +93,7 @@ $(BINPATH)/bin/dosemu: $(REALTOPDIR)/dist/dosemu
 	              $(REALTOPDIR)/dist/dosemu > $(BINPATH)/bin/dosemu
 	chmod +x $(BINPATH)/bin/dosemu
 
-dosemu: $(BINPATH)/bin/$(DOSBIN) $(BINPATH)/bin/dosemu
+dosemu: $(LIBSUBDIRS) $(BINPATH)/bin/$(DOSBIN) $(BINPATH)/bin/dosemu
 
 dosemu_script: $(BINPATH)/bin/dosemu
 
@@ -112,11 +106,12 @@ optionalsubdirs:	$(OPTIONALSUBDIRS)
 docsubdirs:	$(DOCS)
 
 $(DIRLIST):
-	@($(MAKE) -C $@)
+	@($(MAKE) SUBDIR:=$@ -C $@)
 
 version:	versetup
 
 versetup:
+	@mkdir -p lib
 	@mkdir -p $(BINPATH)/bin
 	@mkdir -p $(BINPATH)/commands
 	@cp -p commands/precompiled/*.{com,exe} $(BINPATH)/commands 2> /dev/null || true
@@ -129,10 +124,7 @@ include/confpath.h: ../Makefile.conf
 	echo '#define  DOSEMULIB_DEFAULT  "$(dosemudir)"' >> $@
 	echo '#define  DOSEMUHDIMAGE_DEFAULT "$(syshdimagedir)"' >> $@
 
-doslibnew: doslib
-
-
-doslib: $(REQUIRED) all
+doslib: $(REQUIRED) dosemu
 	@echo ""
 	@echo "---------------------------------DONE compiling-------------------------------"
 	@echo ""
@@ -192,7 +184,11 @@ install:
 	  $(INSTALL) -m 0644 $(REALTOPDIR)/etc/global.conf $(DESTDIR)$(sysconfdir)/global.conf.example; \
 	fi
 	$(INSTALL) -d $(DESTDIR)$(dosemudir)/keymap
-	$(INSTALL) -m 0644 $(REALTOPDIR)/etc/keymap/* $(DESTDIR)$(dosemudir)/keymap
+	for i in $(REALTOPDIR)/etc/keymap/*; do \
+	  if [ -f $$i ]; then \
+	    $(INSTALL) -m 0644 $$i $(DESTDIR)$(dosemudir)/keymap; \
+	  fi; \
+	done
 	$(INSTALL) -d $(DESTDIR)$(bindir)
 	$(INSTALL) -m 0755 ../bin/$(DOSBIN) $(DESTDIR)$(bindir)
 	$(INSTALL) -m 0755 ../bin/dosemu $(DESTDIR)$(bindir)
@@ -306,7 +302,7 @@ $(REALCLEANDIRS):
 	-@$(MAKE) -C $(subst .realclean,,$@) realclean CLEANING=true
 
 pristine:	realclean
-	-rm -f lib/*
+	-rm -rf lib
 	-rm -rf $(BINPATH) ../bin ../commands ../etc/xtermdos ../etc/xinstallvgafont
 	-rm -rf ../testboot
 

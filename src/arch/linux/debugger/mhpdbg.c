@@ -195,40 +195,21 @@ void mhp_input()
   if (mhpdbg.fdin == -1) return;
   mhpdbg.nbytes = read(mhpdbg.fdin, mhpdbg.recvbuf, SRSIZE);
   if (mhpdbg.nbytes == -1) return;
+  if (mhpdbg.nbytes == 0) {
+    if (mhpdbgc.stopped) {
+      mhp_cmd("g");
+      mhp_send();
+    }
+    mhpdbg.active = 0;
+    return;
+  }
   if (!mhpdbg.active) {
     mhpdbg.active = 1; /* 1 = new session */
   }
 }
 
-static void mhp_poll(void)
+static void mhp_poll_loop(void)
 {
-
-   if (!mhpdbg.active) {
-     mhpdbg.nbytes = 0;
-     return;
-   }
-
-   if (mhpdbg.active == 1) {
-      /* new session has started */
-      mhpdbg.active++;
-      vm86s.vm86plus.vm86dbg_active = 1;
-      
-      mhp_printf ("%s", mhp_banner);
-      mhp_cmd("rmapfile");
-      if (wait_for_debug_terminal) wait_for_debug_terminal =0;
-      else mhp_cmd("r0");
-      mhp_send();
-   }
-
-   if (mhpdbgc.want_to_stop) {
-      mhpdbgc.stopped = 1;
-      mhpdbgc.want_to_stop = 0;
-   }
-   if (mhpdbgc.stopped) {
-      mhp_cmd("r0");
-      mhp_send();
-   }
-
    for (;;) {
       handle_signals();
       /* NOTE: if there is input on mhpdbg.fdin, as result of handle_signals
@@ -252,6 +233,10 @@ static void mhp_poll(void)
         if (traceloop) { traceloop=loopbuf[0]=0; }
       }
       if ((mhpdbg.recvbuf[0] == 'q') && (mhpdbg.recvbuf[1] <= ' ')) {
+	 if (mhpdbgc.stopped) {
+	   mhp_cmd("g");
+	   mhp_send();
+	 }
 	 mhpdbg.active = 0;
 	 vm86s.vm86plus.vm86dbg_active = 0;
 	 mhpdbg.sendptr = 0;
@@ -265,49 +250,77 @@ static void mhp_poll(void)
    }
 }
 
-void mhp_exit_intercept(int errcode)
+static void mhp_poll(void)
 {
 
-   if (!errcode || !mhpdbg.active || (mhpdbg.fdin == -1) ) return;
+   if (!mhpdbg.active) {
+     mhpdbg.nbytes = 0;
+     return;
+   }
 
-   mhp_printf("\n****\nleavedos(%d) called, at termination point of DOSEMU\n****\n\n", errcode);
-   mhp_send();
+   if (mhpdbg.active == 1) {
+      /* new session has started */
+      mhpdbg.active++;
+      vm86s.vm86plus.vm86dbg_active = 1;
+      
+      mhp_printf ("%s", mhp_banner);
+      mhp_cmd("rmapfile");
+      mhp_send();
+      if (wait_for_debug_terminal) wait_for_debug_terminal =0;
+   }
+
+   if (mhpdbgc.want_to_stop) {
+      mhpdbgc.stopped = 1;
+      mhpdbgc.want_to_stop = 0;
+   }
+   if (mhpdbgc.stopped) {
+      if (dosdebug_flags & DBGF_LOG_TEMPORARY) {
+         dosdebug_flags &= ~DBGF_LOG_TEMPORARY;
+	 mhp_cmd("log off");
+      }
+      mhp_cmd("r0");
+      mhp_send();
+   }
+   mhp_poll_loop();
+}
+
+void mhp_intercept_log(char *flags, int temporary)
+{
+   char buf[255];
+   sprintf(buf, "log %s", flags);
+   mhp_cmd(buf);
+   mhp_cmd("log on");
+   if (temporary)
+      dosdebug_flags |= DBGF_LOG_TEMPORARY;
+}
+
+void mhp_intercept(char *msg, char *logflags)
+{
+   if (!mhpdbg.active || (mhpdbg.fdin == -1)) return;
    mhpdbgc.stopped = 1;
    mhpdbgc.want_to_stop = 0;
+   mhp_printf(msg);
    mhp_cmd("r0");
    mhp_send();
-   dosdebug_flags |= DBGF_IN_LEAVEDOS;
-   for (;;) {
-      mhp_input();
-      if (mhpdbg.nbytes <= 0) {
-         if (traceloop && mhpdbgc.stopped) {
-           strcpy(mhpdbg.recvbuf,loopbuf);
-           mhpdbg.nbytes=strlen(loopbuf);
-         }
-         else {
-          if (mhpdbgc.stopped) {
-            usleep(JIFFIE_TIME/10);
-            continue;
-          }
-          else break;
-        }
-      }
-      else {
-        if (traceloop) { traceloop=loopbuf[0]=0; }
-      }
-      if ((mhpdbg.recvbuf[0] == 'q') && (mhpdbg.recvbuf[1] <= ' ')) {
-	 mhpdbg.active = 0;
-	 vm86s.vm86plus.vm86dbg_active = 0;
-	 mhpdbg.sendptr = 0;
-         mhpdbg.nbytes = 0;
-         return;
-      }
-      mhpdbg.recvbuf[mhpdbg.nbytes] = 0x00;
-      mhp_cmd(mhpdbg.recvbuf);
-      mhp_send();
-      mhpdbg.nbytes = 0;
-      if (!(dosdebug_flags & DBGF_IN_LEAVEDOS)) return;
+   if (!(dosdebug_flags & DBGF_IN_LEAVEDOS)) {
+     set_VIP();
+     if (in_dpmi)
+       dpmi_eflags |= VIP;
+     if (logflags)
+       mhp_intercept_log(logflags, 1);
+     return;
    }
+   mhp_poll_loop();
+}
+
+void mhp_exit_intercept(int errcode)
+{
+   char buf[255];
+   if (!errcode || !mhpdbg.active || (mhpdbg.fdin == -1) ) return;
+
+   sprintf(buf, "\n****\nleavedos(%d) called, at termination point of DOSEMU\n****\n\n", errcode);
+   dosdebug_flags |= DBGF_IN_LEAVEDOS;
+   mhp_intercept(buf, NULL);
 }
 
 unsigned int mhp_debug(unsigned int code, unsigned int parm1, unsigned int parm2)

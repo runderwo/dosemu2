@@ -16,10 +16,6 @@
  * 
  */
 
-
-#define DOS_HELPER_COOP         0xc0
-
-
-case (DOS_HELPER_COOP):
-	if ( ! coopthreads_plugin_inte6() ) return 0;
+case DOS_HELPER_COMMANDS:
+	if ( ! commands_plugin_inte6() ) return 0;
 	break;

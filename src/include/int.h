@@ -18,7 +18,9 @@ EXTERN char video_ints[256];
 
 void do_int(int);
 void fake_int(int, int);
+void fake_int_to(int cs, int ip);
 void fake_call(int, int);
+void fake_call_to(int cs, int ip);
 void fake_pusha(void);
 void setup_interrupts(void);
 void version_init(void);
@@ -31,5 +33,7 @@ extern int can_revector(int i);
 
 extern int redir_state;
 extern void set_int21_revectored(int);
+
+int dos_helper(void);
 
 #endif

@@ -166,9 +166,14 @@ static void process_master_boot_record(void)
    LWORD(ebp) = LWORD(esi) = (unsigned)&mbr->partition[i];
 }
 
+static int inte6(void)
+{
+  return dos_helper();
+}
+
 /* returns 1 if dos_helper() handles it, 0 otherwise */
 /* dos helper and mfs startup (was 0xfe) */
-static int inte6(void)
+int dos_helper(void)
 {
   switch (LO(ax)) {
   case DOS_HELPER_DOSEMU_CHECK:			/* Linux dosemu installation test */
@@ -472,7 +477,7 @@ static int inte6(void)
 	else i = 1;				/* Slang keyboard */
 
 	if (config.console_video) i |= 0x10;
-	if (config.graphics)      i |= 0x20;
+	if (config.vga)           i |= 0x20;
 	if (config.dualmon)       i |= 0x40;
 	LWORD(eax) = i;
 	break;
@@ -1190,6 +1195,10 @@ static int int21(void)
     }
     return 0;
 
+  case 0x71:
+    if (config.lfn)
+      return mfs_lfn();
+
   default:
     return 0;
   }
@@ -1391,6 +1400,12 @@ static int can_revector_int21(int i)
     else
       return NO_REVECT;
 
+  case 0x71:          /* LFN functions */
+    if (config.lfn)
+      return REVECT;
+    else
+      return NO_REVECT;
+          
   default:
     return NO_REVECT;      /* don't emulate most int 21h functions */
   }
@@ -1775,9 +1790,10 @@ m_printf("Called/ing the mouse with AX=%x \n",LWORD(eax));
 /* Ok now we test to see if the mouse has been taking a break and we can let the 
  * system get on with some real work. :-) */
    if (trigger1 >= config.hogthreshold*200) {
-     if (config.hogthreshold && CAN_SLEEP() && ++trigger >= config.hogthreshold)  {
+     if (config.hogthreshold && CAN_SLEEP() &&
+        trigger++ > (config.hogthreshold - 1) * 20)  {
        m_printf("Ignoring the quiet mouse.\n");
-       usleep(INT2F_IDLE_USECS);
+       usleep(INT15_IDLE_USECS);
        trigger=0;
      }
      trigger1--;
@@ -1904,6 +1920,13 @@ void fake_int(int cs, int ip)
   clear_IF();
 }
 
+void fake_int_to(int cs, int ip)
+{
+  fake_int(REG(cs), LWORD(eip));
+  REG(cs) = cs;
+  REG(eip) = ip;
+}
+
 void fake_call(int cs, int ip)
 {
 #ifdef X86_EMULATOR
@@ -1927,6 +1950,13 @@ void fake_call(int cs, int ip)
   if (tmp) E_MPROT_STACK(tmp_ssp);
 #endif
   LWORD(esp) -= 4;
+}
+
+void fake_call_to(int cs, int ip)
+{
+  fake_call(REG(cs), LWORD(eip));
+  REG(cs) = cs;
+  REG(eip) = ip;
 }
 
 void fake_pusha(void)

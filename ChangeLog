@@ -1,3 +1,204 @@
+2003/08/22 ver 1.1.5.7 unofficial pre-release
+	From Nerijus Baliunas (nerijus@users.sf.net):
+	* doc/README-tech.txt, doc/README.txt, etc/dosemu.conf,
+	  src/doc/README/config, src/doc/README/config-tech,
+	  src/plugin/extra_charsets/cp773.c:
+	  This patch adds cp773 (called KBL in Lithuania)
+	  support. Although it is not an official standard, but is
+	  used more than any other DOS cp in Lithuania.
+	From Clarence:
+	* emu.c: don't print "funny" characters on the screen when speaker 
+	  == NATIVE and video_config_init() aborts (due to e.g. an attempt 
+	  to run with -X without $DISPLAY). 
+	  leavedos() tries to turn off the speaker before the port server
+	  has been initialised (as extra_port_init() is not called before
+	  device_init()).
+	* ports.c: check that the portserver is actually up before writing
+	  anything to the fd's.  This should fix the "printing random
+	  garbage" bugs once and for all :)
+	  portserver_pid should be set to 0 in port_exit() so that if
+	  there are any accidental port accesses after port_exit(), error()
+	  will remind us to fix them. Also, the "if (port_fd_out[1])"
+	  check is not necessary anymore since portserver_pid is already 
+	  tested for.
+	* src/base/bios/int10.c: (and Bart)  (1) int10 should
+	  not affect the carry flag at all  (2) if int10/ah=3 is given a page
+	  past the last page, CX should still be set to the  cursor and DX
+	  should be set to 0.
+	From Stas:
+	* src/dosext/dpmi/: dpmi.c, dpmi.h: 
+	  Dont skip the extended access type byte for 16bit clients.
+	  By the way, this patch allows Windows to work... Yeah, I mean it!
+	  Tadaaa!!! What kind of windows you ask? Guess in 3 attempts :-) It
+	  is very stable as far as I can tell. WinWord6 and some other apps I
+	  tried were working without a hitch. Sound works either.  However
+	  there are some problems: 1. Colors under xdos are completely messed
+	  up when the standard VGA driver is used. Must be fixed.  2. Timer
+	  driver (advapi.386) fails to initialize. Therefore no movie playing
+	  :( Might be a problem with a hardware emulation.
+	  Why am I so lengthy? Because we can run Windows!
+	  Some cleanups and optimisations.
+	  Export selector checking functions.
+	  Allow 4G limits when converting segment to descriptor. (another
+	  part of bug #756570)
+	  Use mhp_intercept() to debug CPU exceptions in DPMI.
+	* src/dosext/dpmi/msdos.c: 
+	  - msdos_fault: Dont try to fix the selector if the program abuses a
+	  perfectly valid descriptor - this is not fixable on dosemu side and
+	  the attempt to only screws up the things even more making it
+	  unfixable also for the program itself.
+	  - msdos_fault: Do all the
+	  fixing on a temporary context struct and apply the fix to the real
+	  context only when we are sure the fix is valid.  - msdos_fault:
+	  - Allow using any realmode segments as a selectors, not only the
+	  special ones (part of bug #756570) - Some cleanup
+	* src/: arch/linux/debugger/mhpdbg.c, dosext/dpmi/dpmi.c,
+	  include/mhpdbg.h: 
+	  Introduce mhp_intercept_log() function that allows to redirect the
+	  log messages to a dosdebug terminal.
+	* src/base/serial/ser_init.c: 
+	  If opening serial port fails, remove the lock and dont try to open
+	  it again.
+	* src/arch/linux/debugger/: dosdebug.c, mhpdbg.c: 
+	  - Resume execution if dosdebug detached while in a stopped state. 
+	  - Fix dosdebug detaching to make it possible to attach dosdebug
+	    again.
+	* src/arch/linux/debugger/mhpdbg.c: 
+	  Return to dosemu context before starting a dosdebug polling cycle.
+	* src/: env/video/X.c, plugin/kbd_unicode/keymaps.c:
+	  Fix some annoying error messages.
+	* src/: arch/linux/debugger/mhpdbg.c, include/mhpdbg.h: 
+	  Introduce mhp_intercept(). When called, the control is transferred
+	  to dosdebug if it was attached.
+	  Kill 2 instances of allocating 64K on stack - this is too much and
+	  causes a memory corruptions for me (probably a gcc problem)
+	From Bart:
+	* src/env/video/attremu.c: Solve problem with attribute emulator
+	  introduced in 1.1.5.4
+	* src/dosext/mfs/: lfn.c, mangle.c, mangle.h, mfs.c, mfs.h:
+	  - implement LFN wildcard delete (int21/ax=7141/si=1)
+	  - check for invalid characters in LFN truename (int21/ax=7160)
+	  - no longer trust stat for vfat; there are some problems with 
+	    question marks and characters such as é (\'e) 
+	  - use underscores instead of ? for unconvertible unicode.
+	    Translate all ?'s to _'s for unix->DOS filename translation.
+	* src/dosext/mfs/: lfn.c, mfs.c, mfs.h;
+	  src/plugin/translate/include/translate.h: 
+	  MFS cleanups, including:
+	  - fix exists() and wildcard delete.	  
+	  - avoid use of some global variables and pass the drive number 
+	    around as a parameter instead.
+	  Make findfirst on a single file more efficient again and 
+	  get it to honour devices again.
+	* src/: dosext/mfs/lfn.c, dosext/mfs/mangle.c, dosext/mfs/mangle.h,
+	  dosext/mfs/mfs.c, dosext/mfs/mfs.h, dosext/mfs/util.c,
+	  plugin/translate/translate_config.c,
+	  plugin/translate/config/plugin_parser,
+	  plugin/translate/include/translate.h: 
+	  Add support (using the translate plugin) to the MFS to translate 
+	  between the external and internal charset for filenames.  
+	  Set $_external_charset (for all purposes except the display) 
+	  to the current locale charset by default.
+	* src/plugin/translate/keysym_approximations.c: Complete commented
+	  out approximations; this is necessary for upcasing filenames
+	  where an equivalent capital letter does not exist in the codepage.
+	* src/arch/linux/Makefile.main: Fix problem with keymap/[a-z]* +
+	  CVS directories
+	* configure, configure.ac, src/arch/linux/Makefile.main: Create
+	  src/lib upon make and remove it with "make distclean".
+	  Uncomment detection of INSTALL and AWK.
+	* Makefile, Makefile.conf.in: Remove any autom4te*.cache varieties
+	  upon distclean.  Set BINPATH at the right time (after THISVERSION).
+	* Makefile, Makefile.conf.in, configure, configure.ac, 
+	  src/{Makefile.common,arch/linux/Makefile.main,commands/Makefile}: 
+	  Use simply expanded variables in several makefiles and avoid
+	  $(shell) (speeds up make, esp. when most is already built)
+	* compiletime-settings, compiletime-settings.devel,
+	  compiletime-settings.help, configure, configure.ac,
+	  default-configure, setup/compiletime_setup.menu,
+	  setup/compiletime_setup.sh, setup/compiletime_setup.tk: Configure
+	  cleanups (with Stas and Clarence) - use $enable_xxx environment
+	  variables - use --disable-x instead of --enable-nox - use --with-x
+	  for libraries - remove "dodebug"
+2003/07/20 ver 1.1.5.6 unofficial pre-release
+	From Bart
+	* src/plugin/: kbd_unicode/keymaps.c, keyboard/keymaps.c: Hungarian
+	  keyboard adjustments (anonymous contribution, see bug 687850)
+	* src/dosext/mfs/: lfn.c, mfs.c, mfs.h: Fix LFN's for VFAT.  Make
+	  use of the VFAT_IOCTL_READDIR_BOTH ioctl to obtain the short
+	  aliases for long filenames (Wine provided a good example).
+	  Remove unnecessary scan_dir usage on VFAT (because stat is
+	  already case-insensitive)
+	* src/dosext/mfs/mfs.c: Fix problem with dir searches that should
+	  *not* find a volume label (such as the attribute 0x3f)
+	* src/dosext/mfs/lfn.c: Fix problem with LFN "truename"
+	  (int21/ax=0x7160/cl=1), case insensitive open's and mkdir.
+	* src/base/bios/int10.c: Fix compilation without X development
+	  libraries.
+	From Stas:
+	* configure, configure.ac: small configure adjustments.
+	* src/dosext/sound/sound.c: Use only the current DMA channel on
+	  SB16.  This allows the QV to work. QV is an MPEG4/DivX player for
+	  DOS!
+	* src/base/mouse/mouse.c: Enable mouse at startup in case the
+	  program doesn't do that manually.
+	* src/base/async/int.c: hogthreshold adjustment for the mouse code.
+	* src/plugin/kbd_unicode/: Makefile, getfd.c, getfd.h, keymaps.c:
+	  Update the getfd() console detection code with the one from kbd 1.08
+2003/07/15 ver 1.1.5.5 unofficial pre-release
+	From Bart
+	- Add support for the Long File Name (int21/ah=71) interface
+	  on redirected drives. For now it's off by default because
+	  it hasn't received much testing yet -- see $_lfn_support.
+	From Stas
+	- Fix DPMI to be able to revector interrupts that are called by
+	  DPMI clients (such as the above int21/ah=71).
+2003/07/15 ver 1.1.5.4 unofficial pre-release
+	From Eric Auer, Witold Filpczyk and Bart
+	- use bitmap fonts by default, rather than X fonts.
+	- Support 80x100 CGA "text graphics" with 8x2 font.
+	- allow resizing of the text window.
+	- VGA attribute emulator cleanups.
+	- Make the 8x16 font in vgafonts.c equal to the one in vga.pcf.
+	From Bart
+	- miscemu.c:
+	  The retrace time is measured in microsecs, not ticks.
+2003/07/15 ver 1.1.5.3 unofficial pre-release
+	From Clarence
+	- minor config tweaks $_X_backgroundfreeze -> $_X_background_pause,
+	- set $_joy_latency to (1) by default.
+	From Stas
+	- add config options for OSS sound
+	- disable auto-init DMA when speaker disabled
+	From Stas and Bart
+	- implement a lightweight coopthreads replacement and port all the
+	  builtins to it.
+	From Bart
+	- Small MFS optimization.
+	- Some small documentation updates.
+	- Kill the (bit-rotten) scroll queue.
+	- Fix non-active setbuf(stdout, NULL) and $_console=(1) without
+	  graphics.
+	- Use putchar instead of write since the buffered stdio problems
+	  were solved.
+	- Avoid some dependencies on bash (export foo=bar, echo -e in
+	  configure)
+	- Kill $_timint, and config.graphics. They were no longer really
+	  used anywhere.
+	- Fix a problem with "-V" not implying "-c".
+	- Fix "make install" if pesky CVS directories are present.
+	- cheap workaround for NPTL: use export LD_ASSUME_KERNEL=2.2.5 in
+	  the dosemu script.
+	- Support the VGA line compare register: this fixes one of the two 
+	  reported problems for Jazz Jackrabbit
+	- Fix colour problem in chain4 modes (second jazz jackrabbit issue)
+	- Fix bug 753968: xdos handles mouse events without having a focus
+	  -- don't warp the mouse if the mouse left the window.
+	- Small makefile fix to help partial builds.
+	- Misc small configure and Makefile fixes.
+	- Solve potential gcc problem with a wrong asm constraint: it
+	  needs to be "q" for registers with byte parts, not "r". 
+	  This prevents gcc from using "%sil" as low part of %esi%.
 2003/06/14 ver 1.1.5.2 unofficial pre-release
 	From Bart
 	- enable building in a separate object directory
