@@ -47,6 +47,9 @@
  *
  * HISTORY:
  * $Log$
+ * Revision 1.2.2.6  2004/05/31 18:10:52  bartoldeman
+ * Backport filename Unicode translations.
+ *
  * Revision 1.2.2.5  2004/05/18 23:03:45  bartoldeman
  * backport: Fix gcc 3.4 warnings
  * Configure respects CFLAGS.
@@ -216,6 +219,7 @@ TODO:
 #include <dirent.h>
 #include <signal.h>
 #include <string.h>
+#include <wctype.h>
 #include "mfs.h"
 #include "dos2linux.h"
 /* For passing through GetRedirection Status */
@@ -225,6 +229,9 @@ TODO:
 #include "utilities.h"
 #ifdef X86_EMULATOR
 #include "cpu-emu.h"
+#endif
+#ifdef HAVE_UNICODE_TRANSLATION
+#include "translate.h"
 #endif
 #endif
 
@@ -297,6 +304,8 @@ static boolean_t compare(char *, char *, char *, char *);
 static int dos_fs_redirect(state_t *);
 static int build_ufs_path(char *ufs, const char *path);
 static int is_long_path(const char *s);
+__inline__ static void
+path_to_ufs(char *ufs, size_t ufs_offset, const char *path, int PreserveEnvVar);
 
 static boolean_t drives_initialized = FALSE;
 static boolean_t finds_in_progress[MAX_DRIVE];
@@ -524,7 +533,7 @@ select_drive(state_t *state)
   if (!found && check_sda_ffn) {
     char *fn1 = sda_filename1(sda);
 
-    dd = toupperDOS(fn1[0]) - 'A';
+    dd = toupper(fn1[0]) - 'A';
     if (dd >= 0 && dd < MAX_DRIVE && drives[dd].root) {
       /* removed ':' check so DRDOS would be happy,
 	     there is a slight worry about possible device name
@@ -537,7 +546,7 @@ select_drive(state_t *state)
     char *name = (char *) Addr(state, ds, esi);
     Debug0((dbg_fd, "FNX=%.15s\n", name));
     if (name[1] == ':') {
-      dd = toupperDOS(name[0]) - 'A';
+      dd = toupper(name[0]) - 'A';
     } else {
       dd = sda_cur_drive(sda);
     }
@@ -580,7 +589,7 @@ is_hidden(char *fname)
 {
   char *p = strrchr(fname,'/');
   if (p) fname = p+1;
-  return(fname[0] == '.' && strcmpDOS(fname,"..") && fname[1]);
+  return(fname[0] == '.' && strcmp(fname,"..") && fname[1]);
 }
 
 static int
@@ -781,7 +790,7 @@ init_drive(int dd, char *path, char *options)
 
   if (num_drives <= dd)
     num_drives = dd + 1;
-  drives[dd].read_only = (options && (toupperDOS(options[0]) == 'R'));
+  drives[dd].read_only = (options && (toupper(options[0]) == 'R'));
   Debug0((dbg_fd, "initialised drive %d as %s with access of %s\n", dd, drives[dd].root,
 	  drives[dd].read_only ? "READ_ONLY" : "READ_WRITE"));
 #if 0  
@@ -923,6 +932,7 @@ extract_filename(char *filename, char *name, char *ext)
     strncpy(ext, "   ", 3);
   }
 
+#ifndef HAVE_UNICODE_TRANSLATION
   for (pos = 0; pos < 8; pos++) {
     char ch = name[pos];
 
@@ -936,6 +946,7 @@ extract_filename(char *filename, char *name, char *ext)
     if (isalphaDOS(ch) && islowerDOS(ch))
       ext[pos] = toupperDOS(ch);
   }
+#endif
 
   return (TRUE);
 }
@@ -980,31 +991,37 @@ static struct dir_ent *make_entry(struct dir_list *dir_list)
   return entry;
 }
 
-/* check if name/mname.mext exists as such if it does not contain
-   wildcards */
-static boolean_t exists(char *name, char *mname, char *mext, struct stat *st)
+/* construct (lowercase) unix name from (uppercase) DOS mname and DOS mext */
+static void dos83_to_ufs(char *name, const char *mname, const char *mext)
 {
-  char fullname[MAXPATHLEN];
+  char filename[8+1+3+1];
   size_t len;
-  int rc;
-    
-  len = strlen(name);
-  strcpy(fullname, name);
-  fullname[len++] = '/';
-  memcpy(fullname + len, mname, 8);
-  len += 8;
-  while (fullname[len - 1] == ' ')
+
+  len = 8;
+  while (mname[len - 1] == ' ')
     len--;
-  fullname[len++] = '.';
-  memcpy(fullname + len, mext, 3);
+  memcpy(filename, mname, len);
+  filename[len++] = '.';
+  memcpy(filename + len, mext, 3);
   len += 3;
-  while (fullname[len - 1] == ' ')
+  while (filename[len - 1] == ' ')
     len--;
-  while (fullname[len - 1] == '.')
+  while (filename[len - 1] == '.')
     len--;
-  fullname[len] = '\0';
-  rc = find_file(fullname, st);
-  return rc;
+  filename[len] = '\0';
+  path_to_ufs(name, 0, filename, 0);
+}
+
+/* check if name/filename exists as such if it does not contain wildcards */
+static boolean_t exists(const char *name, const char *filename, struct stat *st)
+{
+  boolean_t ret;
+  char *fullname;
+  asprintf(&fullname, "%s/%s", name, filename);
+  Debug0((dbg_fd, "exists() result = %s\n", fullname));
+  ret = find_file(fullname, st);
+  free(fullname);
+  return ret;
 }
 
 static struct dir_list *get_dir(char *name, char *mname, char *mext)
@@ -1045,6 +1062,7 @@ static struct dir_list *get_dir(char *name, char *mname, char *mext)
 
     memcpy(entry->name, mname, 8);
     memset(entry->ext, ' ', 3);
+    dos83_to_ufs(entry->d_name, entry->name, entry->ext);
     entry->mode = S_IFREG;
     entry->size = 0;
     entry->time = time(NULL);
@@ -1056,7 +1074,8 @@ static struct dir_list *get_dir(char *name, char *mname, char *mext)
   else if (!memchr(mname, '?', 8) && !memchr(mname, '*', 8) &&
            !memchr(mext, '?', 3) && !memchr(mext, '*', 3))
   {
-    if (exists(name, mname, mext, &sbuf))
+    dos83_to_ufs(buf, mname, mext);
+    if (exists(name, buf, &sbuf))
     {
       Debug0((dbg_fd, "filename exists, %s %.8s%.3s\r\n", name, mname, mext));
       dir_list = make_dir_list(1);
@@ -1064,6 +1083,7 @@ static struct dir_list *get_dir(char *name, char *mname, char *mext)
 
       memcpy(entry->name, mname, 8);
       memcpy(entry->ext, mext, 3);
+      strcpy(entry->d_name, buf);
       entry->mode = sbuf.st_mode;
       entry->size = sbuf.st_size;
       entry->time = sbuf.st_mtime;
@@ -1101,7 +1121,7 @@ static struct dir_list *get_dir(char *name, char *mname, char *mext)
       if (tmpname[0] == '.') {
 	if (namlen > 2)
 	  continue;
-	if (strncasecmpDOS(name, dos_root, strlen(name)) == 0)
+	if (strlen(name) == dos_root_len)
 	  continue;
 	if ((namlen == 2) &&
 	    (tmpname[1] != '.'))
@@ -1126,6 +1146,7 @@ static struct dir_list *get_dir(char *name, char *mname, char *mext)
 
       memcpy(entry->name, fname, 8);
       memcpy(entry->ext, fext, 3);
+      strcpy(entry->d_name, cur_ent->d_name);
 
       entry->hidden = is_hidden(cur_ent->d_name);
 
@@ -1158,17 +1179,21 @@ static struct dir_list *get_dir(char *name, char *mname, char *mext)
  * Assumes that a legal string is passed in.
  */
 static void
-auspr(char *filestring0, char *name, char *ext)
+auspr(const char *filestring, char *name, char *ext)
 {
-  char filestring[100];
-
   int pos = 0;
   int dot_pos = 0;
   int elen;
-
-  name_convert(filestring,filestring0,MANGLE,NULL);
-
+  const char *bs_pos;
+ 
   Debug1((dbg_fd, "auspr '%s'\n", filestring));
+  bs_pos=strrchr(filestring, '\\');
+  if (bs_pos == NULL)
+    bs_pos = filestring;
+  else
+    bs_pos++;
+  filestring = bs_pos;
+
   for (pos = 0;; pos++) {
     if (filestring[pos] == '.') {
       dot_pos = pos;
@@ -1194,6 +1219,7 @@ auspr(char *filestring0, char *name, char *ext)
     memset(ext, ' ', 3);
   }
 
+#ifndef HAVE_UNICODE_TRANSLATION
   for (pos = 0; pos < 8; pos++) {
     char ch = name[pos];
 
@@ -1207,8 +1233,9 @@ auspr(char *filestring0, char *name, char *ext)
     if (isalphaDOS(ch) && islowerDOS(ch))
       ext[pos] = toupperDOS(ch);
   }
+#endif
 
-  Debug0((dbg_fd,"auspr(%s,%.8s,%.3s)\n",filestring0,name,ext));
+  Debug0((dbg_fd,"auspr(%s,%.8s,%.3s)\n",filestring,name,ext));
 
 }
 
@@ -1573,7 +1600,7 @@ dos_fs_dev(state_t *state)
 	return (UNCHANGED);
       }
 
-      if (strncmpDOS(dirnameptr - 10, "directory ", 10) == 0) {
+      if (strncmp(dirnameptr - 10, "directory ", 10) == 0) {
 	*dirnameptr = 0;
 	strncpy(dirnameptr, drives[drive_to_redirect].root, 128);
 	strcat(dirnameptr, "\n\r$");
@@ -1636,6 +1663,16 @@ path_to_ufs(char *ufs, size_t ufs_offset, const char *path, int PreserveEnvVar)
 {
   char ch;
   int inenv = 0;
+#ifdef HAVE_UNICODE_TRANSLATION
+  struct char_set_state dos_state;
+  struct char_set_state unix_state;
+
+  struct char_set *dos_charset = trconfig.dos_charset;
+  struct char_set *unix_charset = trconfig.unix_charset;
+  
+  init_charset_state(&dos_state, dos_charset);
+  init_charset_state(&unix_state, unix_charset);
+#endif
 
   if (ufs_offset < MAXPATHLEN) do {
     ch = *path++;
@@ -1659,14 +1696,36 @@ path_to_ufs(char *ufs, size_t ufs_offset, const char *path, int PreserveEnvVar)
     case '}':
       inenv = 0;
     default:
-      if (!inenv)
-	ch = tolowerDOS(ch);
       break;
     }
-    ufs[ufs_offset++] = ch;
-  } while(ch != EOS);
 
+#ifndef HAVE_UNICODE_TRANSLATION
+    if (!inenv)
+      ch = tolowerDOS(ch);
+#else
+    if (ch != EOS) {
+      t_unicode symbol;
+      size_t result;
+      result = charset_to_unicode(&dos_state, &symbol, &ch, 1);
+      if (result == -1) symbol = '?';
+      if (!inenv)
+	symbol = towlower(symbol);
+      result = unicode_to_charset(&unix_state, symbol, &ufs[ufs_offset],
+				  MAXPATHLEN - ufs_offset - 1);
+      if (result == -1)
+        ufs[ufs_offset++] = '?';
+      else
+        ufs_offset += result;
+    } else
+#endif
+      ufs[ufs_offset++] = ch;
+  } while(ch != EOS);
+ 
   Debug0((dbg_fd, "dos_gen: path_to_ufs '%s'\n", ufs));
+#ifdef HAVE_UNICODE_TRANSLATION
+  cleanup_charset_state(&unix_state);
+  cleanup_charset_state(&dos_state);
+#endif
 }
 
 static int build_ufs_path(char *ufs, const char *path)
@@ -1720,20 +1779,19 @@ scan_dir(char *path, char *name)
 
   /* now scan for matching names */
   while ((cur_ent = dos_readdir(cur_dir))) {
-    char tmpname[100];
+    char tmpname[256]; /* insecure fixed buffer to be fixed later..*/
 
-    if (cur_ent->d_ino == 0)
-      continue;
+    if (strcasecmpDOS(name, cur_ent->d_name) != 0) {
 
-    if (!name_convert(tmpname,cur_ent->d_name,MANGLE,NULL))
-      continue;
+      if (!name_convert(tmpname,cur_ent->d_name,MANGLE,NULL))
+	continue;
 
-    if (tmpname[0] == '.' &&
-	strncasecmpDOS(path, dos_root, strlen(path)) != 0)
-      continue;
+      if (cur_ent->d_name[0] == '.' && strlen(path) == dos_root_len)
+	continue;
 
-    if (strcasecmpDOS(name, tmpname) != 0)
-      continue;
+      if (strcasecmpDOS(name, tmpname) != 0)
+	continue;
+    }
 
     Debug0((dbg_fd, "scan_dir found %s\n",cur_ent->d_name));
 
@@ -1793,12 +1851,6 @@ static boolean_t find_file(char *fpath, struct stat * st)
   /* slash1 will point to the beginning of the section we're looking
      at, and slash2 will point at the end */
   slash1 = fpath + dos_root_len - 1;
-
-  /* maybe if we make it all lower case, this is a "best guess" */
-  for (slash2 = slash1; *slash2; ++slash2)
-    *slash2 = tolowerDOS(*slash2);
-  if (stat(fpath, st) == 0)
-    return (TRUE);
 
   /* now match each part of the path name separately, trying the names
      as is first, then tring to scan the directory for matching names */
@@ -1876,6 +1928,7 @@ compare(char *fname, char *fext, char *mname, char *mext)
     if (mname[i] == '*') {
       break;
     }
+#ifndef HAVE_UNICODE_TRANSLATION
     if (isalphaDOS(mname[i]) && isalphaDOS(fname[i])) {
       char x = isupperDOS(mname[i]) ?
       mname[i] : toupperDOS(mname[i]);
@@ -1884,8 +1937,9 @@ compare(char *fname, char *fext, char *mname, char *mext)
 
       if (x != y)
 	return (FALSE);
-    }
-    else if (mname[i] != fname[i]) {
+    } else
+#endif
+    if (mname[i] != fname[i]) {
       return (FALSE);
     }
   }
@@ -1909,6 +1963,7 @@ compare(char *fname, char *fext, char *mname, char *mext)
     if (mext[i] == '*') {
       break;
     }
+#ifndef HAVE_UNICODE_TRANSLATION
     if (isalphaDOS(mext[i]) && isalphaDOS(fext[i])) {
       char x = isupperDOS(mext[i]) ?
       mext[i] : toupperDOS(mext[i]);
@@ -1917,8 +1972,9 @@ compare(char *fname, char *fext, char *mname, char *mext)
 
       if (x != y)
 	return (FALSE);
-    }
-    else if (mext[i] != fext[i]) {
+    } else
+#endif
+    if (mext[i] != fext[i]) {
       return (FALSE);
     }
   }
@@ -2442,7 +2498,7 @@ RedirectDevice(state_t * state)
   path[0] = 0;
 
   Debug0((dbg_fd, "RedirectDevice %s to %s\n", deviceName, resourceName));
-  if (strncmpDOS(resourceName, LINUX_RESOURCE,
+  if (strncmp(resourceName, LINUX_RESOURCE,
 	      strlen(LINUX_RESOURCE)) != 0) {
     /* pass call on to next redirector, if any */
     return (REDIRECT);
@@ -2453,7 +2509,7 @@ RedirectDevice(state_t * state)
     SETWORD(&(state->eax), FUNC_NUM_IVALID);
     return (FALSE);
   }
-  current_drive = toupperDOS(deviceName[0]) - 'A';
+  current_drive = toupper(deviceName[0]) - 'A';
 
   /* see if drive is in range of valid drives */
   if (current_drive < 0 || current_drive > lol_last_drive(lol)) {
@@ -2567,7 +2623,7 @@ CancelRedirection(state_t * state)
     /* we only handle drive redirections, pass it through */
     return (REDIRECT);
   }
-  current_drive = toupperDOS(deviceName[0]) - 'A';
+  current_drive = toupper(deviceName[0]) - 'A';
 
   /* see if drive is in range of valid drives */
   if (current_drive < 0 || current_drive > lol_last_drive(lol)) {
@@ -2800,6 +2856,32 @@ Values of DOS 2-6.22 file sharing behavior:
   return (TRUE);
 }
 
+static char *getbasename(char *fpath)
+{
+  char *bs_pos = strrchr(fpath, '/');
+  if (bs_pos == NULL) {
+    strcpy(fpath, "/");
+    bs_pos = fpath;
+  }
+  return bs_pos + 1;
+}
+
+static void find_dir(char *fpath)
+{
+  struct stat st;
+  char *bs_pos, *buf;
+  
+  bs_pos = getbasename(fpath);
+  if (bs_pos == fpath + 1)
+    return;
+  bs_pos--;
+  buf = strdup(bs_pos);
+  *bs_pos = EOS;
+  find_file(fpath, &st);
+  strcat(fpath, buf);
+  free(buf);
+}
+
 static void open_device(unsigned long devptr, char *fname, sft_t sft)
 {
   unsigned char *dev =
@@ -2833,7 +2915,7 @@ dos_fs_redirect(state_t *state)
   u_short FCBcall = 0;
   u_char create_file=0;
   int fd;
-  int cnt, cnt1;
+  int cnt;
   int ret = REDIRECT;
   cds_t my_cds;
   sft_t sft;
@@ -2926,13 +3008,7 @@ dos_fs_redirect(state_t *state)
       return (FALSE);
     }
     if (mkdir(fpath, 0775) != 0) {
-      bs_pos = strrchr(fpath, '/');
-      if (bs_pos == NULL)
-        bs_pos = fpath;
-      strcpy(buf, bs_pos);
-      *bs_pos = EOS;
-      find_file(fpath, &st);
-      strcat(fpath, buf);
+      find_dir(fpath);
       Debug0((dbg_fd, "trying '%s'\n", fpath));
       if (mkdir(fpath, 0755) != 0) {
 	Debug0((dbg_fd, "make directory failed '%s'\n",
@@ -3225,13 +3301,7 @@ dos_fs_redirect(state_t *state)
         SETWORD(&state->eax, ACCESS_DENIED);
         return (FALSE);
     }
-    bs_pos = strrchr(fpath, '/');
-    if (bs_pos == NULL)
-      bs_pos = fpath;
-    strcpy(buf, bs_pos);
-    *bs_pos = EOS;
-    find_file(fpath, &st);
-    strcat(fpath, buf);
+    find_dir(fpath);
 
     build_ufs_path(buf, filename1);
     if (!find_file(buf, &st) || is_dos_device(buf)) {
@@ -3268,15 +3338,10 @@ dos_fs_redirect(state_t *state)
 	return (FALSE);
       }
       
-      bs_pos = strrchr(fpath, '/');
-      if (bs_pos == NULL)
-        bs_pos = fpath;
-      *bs_pos = EOS;
-      auspr(bs_pos + 1, fname, fext);
-      if (bs_pos == fpath) {
-	strcpy(fpath, "/");
-      }
+      auspr(filename1, fname, fext);
 
+      bs_pos = getbasename(fpath);
+      *bs_pos = '\0';
       dir_list = get_dir(fpath, fname, fext);
 
       if (dir_list == NULL) {
@@ -3302,20 +3367,12 @@ dos_fs_redirect(state_t *state)
 	return (TRUE);
       }
 
-      cnt1 = strlen(fpath);
-      fpath[cnt1] = SLASH;
+      cnt = strlen(fpath);
+      fpath[cnt] = SLASH;
       de = &dir_list->de[0];
       for(i = 0; i < dir_list->nr_entries; i++, de++) {
 	if ((de->mode & S_IFMT) == S_IFREG) {
-	  cnt = cnt1;
-	  memcpy(&fpath[cnt+1], de->name, 8);
-	  for (cnt += 8; fpath[cnt] == ' '; cnt--);
-	  fpath[++cnt] = '.';
-	  memcpy(&fpath[cnt+1], de->ext, 3);
-	  for (cnt += 3; fpath[cnt] == ' '; cnt--);
-	  fpath[++cnt] = EOS;
-	  if (fpath[cnt - 1] == '.')
-	    fpath[cnt - 1] = EOS;
+	  strcpy(fpath + cnt, de->d_name);
 	  if (find_file(fpath, &st)) {
             if (access(fpath, W_OK) == -1) {
               errcode = EACCES;
@@ -3389,10 +3446,7 @@ dos_fs_redirect(state_t *state)
       return (FALSE);
     }
     build_ufs_path(fpath, filename1);
-    bs_pos = strrchr(fpath, '/');
-    if (bs_pos == NULL)
-      bs_pos = fpath;
-    auspr(bs_pos + 1, fname, fext);    
+    auspr(filename1, fname, fext);    
     if (!find_file(fpath, &st)) {
       Debug0((dbg_fd, "open failed: '%s'\n", fpath));
       SETWORD(&(state->eax), FILE_NOT_FOUND);
@@ -3535,10 +3589,7 @@ dos_fs_redirect(state_t *state)
       return (FALSE);
     }
     build_ufs_path(fpath, filename1);
-    bs_pos=strrchr(fpath, '/');
-    if (bs_pos == NULL)
-      bs_pos = fpath;
-    auspr(bs_pos + 1, fname, fext);
+    auspr(filename1, fname, fext);
     if (find_file(fpath, &st)) {
       devptr = is_dos_device(fpath);
       if (devptr) {
@@ -3556,13 +3607,7 @@ dos_fs_redirect(state_t *state)
 
     if ((fd = open(fpath, (O_RDWR | O_CREAT),
 		   get_unix_attr(0664, attr))) < 0) {
-      bs_pos=strrchr(fpath, '/');
-      if (bs_pos == NULL)
-        bs_pos = fpath;
-      strcpy(buf, bs_pos);
-      *bs_pos = EOS;
-      find_file(fpath, &st);
-      strcat(fpath, buf);
+      find_dir(fpath);
       Debug0((dbg_fd, "trying '%s'\n", fpath));
       if ((fd = open(fpath, (O_RDWR | O_CREAT),
 		     get_unix_attr(0664, attr))) < 0) {
@@ -3690,13 +3735,7 @@ dos_fs_redirect(state_t *state)
       return (TRUE);
     }
 
-    bs_pos = strrchr(fpath, '/');
-    if (bs_pos == NULL)
-      bs_pos = fpath;
-    strcpy(buf, bs_pos);
-    *bs_pos = EOS;
-
-    auspr(bs_pos + 1, fname, fext);
+    auspr(filename1, fname, fext);
     memcpy(sdb_template_name(sdb), fname, 8);
     memcpy(sdb_template_ext(sdb), fext, 3);
     sdb_attribute(sdb) = attr;
@@ -3710,8 +3749,8 @@ dos_fs_redirect(state_t *state)
 
 #ifndef NO_VOLUME_LABELS
     if (((attr & (VOLUME_LABEL|DIRECTORY)) == VOLUME_LABEL) &&
-	strncmpDOS(sdb_template_name(sdb), "????????", 8) == 0 &&
-	strncmpDOS(sdb_template_ext(sdb), "???", 3) == 0) {
+	strncmp(sdb_template_name(sdb), "????????", 8) == 0 &&
+	strncmp(sdb_template_ext(sdb), "???", 3) == 0) {
       Debug0((dbg_fd, "DO LABEL!!\n"));
       {
         char *label, *root, *p;
@@ -3756,9 +3795,8 @@ dos_fs_redirect(state_t *state)
       return (FALSE);
 #endif
 
-    if (bs_pos == fpath)
-      strcpy(fpath, "/");
-
+    bs_pos = getbasename(fpath);
+    *bs_pos = '\0';
     /* for efficiency we don't read everything if there are no wildcards */
     if (!memchr(sdb_template_name(sdb), '?', 8) &&
         !memchr(sdb_template_name(sdb), '*', 8) &&
@@ -3779,7 +3817,6 @@ dos_fs_redirect(state_t *state)
       set_long_path_on_dirs(hlist);
     }
     hlist_index = hlist_push(hlist, sda_cur_psp(sda), fpath);
-    strcat(fpath, buf);
     sdb_dir_entry(sdb) = 0;
     sdb_p_cluster(sdb) = hlist_index;
 
@@ -3790,8 +3827,8 @@ dos_fs_redirect(state_t *state)
      * This is the right place to leave this stuff for volume labels. --ms
      */
     if (((attr & (VOLUME_LABEL|DIRECTORY)) == VOLUME_LABEL) &&
-        strncmpDOS(sdb_template_name(sdb), "????????", 8) == 0 &&
-        strncmpDOS(sdb_template_ext(sdb), "???", 3) == 0) {
+        strncmp(sdb_template_name(sdb), "????????", 8) == 0 &&
+        strncmp(sdb_template_ext(sdb), "???", 3) == 0) {
       Debug0((dbg_fd, "DONE LABEL!!\n"));
 
       return (TRUE);

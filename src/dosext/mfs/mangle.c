@@ -33,10 +33,16 @@ Modified by O.V.Zhirov, July 1998
 
 
 #ifdef DOSEMU
+#include "config.h"
+#include "utilities.h"
 #include "mangle.h"
 #include "mfs.h"
 #include "dos2linux.h"
 #include "emu.h"
+#ifdef HAVE_UNICODE_TRANSLATION
+#include "translate.h"
+#include <wctype.h>
+#endif
 #else
 #include "includes.h"
 #include "loadparm.h"
@@ -106,6 +112,9 @@ unsigned long is_dos_device(const char *fname)
     for (i = 0; i < 8; i++)
     {
       char c1 = fname[i];
+      /* hopefully no device names with cyrillic characters exist ... */
+      if ((unsigned char)c1 >= 128) break;
+      if ((unsigned char)dev[0xa + i] >= 128) break;
       if (c1 == '.' || c1 == '\0')
       {
         /* check if remainder of device name consists of spaces or nulls */
@@ -117,7 +126,7 @@ unsigned long is_dos_device(const char *fname)
         }
         break;
       }
-      if (toupperDOS(c1) != toupperDOS(dev[0xa + i]))
+      if (toupper(c1) != toupper(dev[0xa + i]))
         break;
     }
     if (i == 8)
@@ -187,10 +196,6 @@ static void valid_initialise(void)
   for (i=0;i<256;i++)
     valid_dos_char[i] = is_valid_DOS_char(i);
 
-#ifdef DOSEMU
-  valid_dos_char['?'] = True;
-#endif
-  
   initialised = True;
 }
 
@@ -356,7 +361,6 @@ BOOL check_mangled_stack(char *s, char *MangledMap)
     {
       check_extension = True;
       StrnCpy(extension,p,4);
-      strlowerDOS(extension); /* XXXXXXX */
     }
 
   for (i=0;i<mangled_stack_len;i++)
@@ -502,17 +506,68 @@ void mangle_name_83(char *s, char *MangledMap)
   DEBUG(5,("%s\n",s));
 }
 
+/****************************************************************************
+convert a filename from a UNIX to a DOS character set.
+****************************************************************************/
+#ifdef HAVE_UNICODE_TRANSLATION
+BOOL name_ufs_to_dos(char *dest, const char *src)
+{
+  struct char_set_state dos_state;
+  struct char_set_state unix_state;
+
+  int retval = 1;
+  
+  t_unicode symbol;
+  size_t slen, dlen, udlen, result;
+
+  init_charset_state(&unix_state, trconfig.unix_charset);
+  init_charset_state(&dos_state, trconfig.dos_charset);
+
+  dlen = slen = udlen = strlen(src);
+  while (*src) {
+    result = charset_to_unicode(&unix_state, &symbol, src, slen);
+    if (result == -1) {
+      symbol = '_';
+      result = 1;
+    }
+    src += result;
+    slen -= result;
+    symbol = towupper(symbol);
+    result = unicode_to_charset(&dos_state, symbol, dest, dlen);
+    if (result == -1) {
+      *dest = '_';
+      result = 1;
+    }
+    if (result == 1 && *dest == '?') {
+      *dest = '_';
+    }
+    if (!VALID_DOS_PCHAR(dest) && strchr(" +,;=[]",*dest)==0) {
+      retval = 0;
+    }
+    dest += result;
+    dlen -= result;
+  }
+  *dest = '\0';
+  cleanup_charset_state(&unix_state);
+  cleanup_charset_state(&dos_state);
+  return retval;
+}
+#endif
 
 /****************************************************************************
-convert a filename to 8.3 format. return True if successful.
+convert a filename to uppercase 8.3 format. return True if successful.
 ****************************************************************************/
 BOOL name_convert(char *OutName,char *InName,BOOL mangle, char *MangledMap)
 {
   /* initially just copy it */
 #ifdef KANJI
   strcpy(OutName, kj_dos_format (InName, False));
+  strupperDOS(OutName);
+#elif defined HAVE_UNICODE_TRANSLATION
+  name_ufs_to_dos(OutName,InName);
 #else
   strcpy(OutName,InName);
+  strupperDOS(OutName);
 #endif
 
   /* check if it's already in 8.3 format */

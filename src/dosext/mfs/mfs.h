@@ -249,6 +249,7 @@ typedef struct vm86_regs state_t;
 struct dir_ent {
   char name[8];			/* dos name and ext */
   char ext[3];
+  char d_name[256];             /* unix name as in readdir */
   u_short mode;			/* unix st_mode value */
   u_short hidden;
   u_short long_path;            /* directory has long path */
