@@ -1709,6 +1709,7 @@ err:
 	  sprintf(buf+2, "Linux DOSEMU Version %d.%d.%f\n", VERSION,
 		  SUBLEVEL, PATCHLEVEL);
       }
+    break;
 	  
   case 0x0500:
     GetFreeMemoryInformation( (unsigned int *)
