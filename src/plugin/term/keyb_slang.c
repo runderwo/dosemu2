@@ -602,8 +602,6 @@ static Keymap_Scan_Type Dosemu_Ctrl_keys[] =
   /* Repair some of the mistakes from 'define_key_from_keymap()' */
   /* REMEMBER, we're pretending this is a us-ascii keyboard */
   {"^C",	KEY_BREAK },
-  {"*",		KEY_8 | SHIFT_MASK },
-  {"+",		KEY_EQUALS | SHIFT_MASK },
 
   /* Now setup the shift modifier keys */
   {"^@a",	ALT_KEY_SCAN_CODE },
