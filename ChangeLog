@@ -1,7 +1,17 @@
 2004/01/18 ver 1.2.0 released
+	From Stas
+	- updates to TUN/TAP README about bridging
 	From Bart
 	- mknewyear and adapt various other dates
-	- misc doc adjustments (README.txt, Novell-HOWTO)
+	- miscellenous doc adjustments 
+	  (README.txt, Novell-HOWTO with help from Stas and Peter Eckhard),
+	   announce with some help from Claudia Neumann, INSTALL, HOWTO)
+	- Added $_xterm_title to dosemu.conf to configure or disable
+	  the xterm (or putty or ...) window title with running DOS
+	  program.
+	- Friendlier message if no DOS is found.
+	- Fix shift-3 (paragraph sign) on the German keyboard and add
+	  "last resort" keyboard translation from Unicode to < 0x20 values.
 2004/01/14 ver 1.2.0rc2 stable pre-release (aka 1.1.99.2)
 	From Stas:
 	- src/base/serial/: ser_defs.h, ser_init.c, ser_irq.c, ser_ports.c:
