@@ -957,7 +957,7 @@ out these emulation lines, and add the line:
 </para>
 
 <screen>
-$_ports { device /dev/lp0 fast range 0x3bc 0x3bf  } # lpt0
+$_ports = "device /dev/lp0 fast range 0x3bc 0x3bf" # lpt0
 </screen>
 
 <para>
@@ -965,7 +965,7 @@ for the "monitor card" printer port (corresponds to /dev/lp0), or:
 </para>
 
 <screen>
-$_ports { device /dev/lp1 fast range 0x378 0x37f } # lpt1
+$_ports = "device /dev/lp1 fast range 0x378 0x37f" # lpt1
 </screen>
 
 <para>
@@ -973,7 +973,7 @@ or:
 </para>
 
 <screen>
-$_ports { device /dev/lp1 fast range 0x278 0x27f } # lpt2
+$_ports = "device /dev/lp1 fast range 0x278 0x27f" # lpt2
 </screen>
 
 <para>
