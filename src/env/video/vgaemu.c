@@ -2130,12 +2130,12 @@ int vga_emu_setmode(int mode, int width, int height)
    */
 
   if(!(mode & 0x8000) && !(mode < 0x100 && (mode & 0x80))) {
-    memset((void *) vga.mem.base, 0, vga.mem.size);
+    unsigned *p = (unsigned *) vga.mem.base;
     if(vga.mode_class == TEXT) {
-      unsigned *p = (unsigned *) vga.mem.base;
       int i;
-      
       for(i = 0; i < 0x2000; i++) p[i] = 0x07200720;
+    } else {
+      memset(p, 0, vga.mem.size);
     }
   }
 
@@ -2506,7 +2506,17 @@ void vgaemu_adj_cfg(unsigned what, unsigned msg)
         vga.mem.planes = u1; vga.reconfig.mem = 1;   
         vga_msg("vgaemu_adj_cfg: mem reconfig (%u planes)\n", u1);
       }
-      if(msg || u != u0) vga_msg("vgaemu_adj_cfg: seq.addr_mode = %s\n", txt1[u]); 
+      if(msg || u != u0) vga_msg("vgaemu_adj_cfg: seq.addr_mode = %s\n", txt1[u]);
+      if (vga.mode_class == TEXT) {
+        int horizontal_display_end = vga.crtc.data[0x1] + 1;
+	int multiplier = 9 - (vga.seq.data[1] & 1);
+	int width = horizontal_display_end * multiplier;
+	if ((vga.width != width) || (vga.char_width != multiplier)) {
+	  vga.width = width;
+	  vga.char_width = multiplier;
+	  vga.reconfig.display = 1;
+	}
+      }
     break;
 
     case CFG_CRTC_ADDR_MODE:
@@ -2518,12 +2528,11 @@ void vgaemu_adj_cfg(unsigned what, unsigned msg)
       vga.display_start = (vga.crtc.data[0x0d] + (vga.crtc.data[0x0c] << 8)) << 
 	      vga.crtc.addr_mode;
       /* this shift should really be a rotation, depending on mode control bit 5 */
-      screen_adr = SCREEN_ADR(0) + vga.display_start;
+      screen_adr = SCREEN_ADR(0) + vga.display_start / 2;
       vga.crtc.cursor_location =  (vga.crtc.data[0x0f] + (vga.crtc.data[0x0e] << 8)) <<
               vga.crtc.addr_mode;
       vga.scan_len = vga.crtc.data[0x13] << (vga.crtc.addr_mode + 1);
       if (vga.scan_len == 0) vga.scan_len = 160;
-      if (vga.mode_class == TEXT) co = vga.scan_len / 2;
       cursor_row = (vga.crtc.cursor_location - vga.display_start) / vga.scan_len;
       cursor_col = ((vga.crtc.cursor_location - vga.display_start) % vga.scan_len) / 2;
       if (u1 != vga.scan_len) vga.reconfig.mem = 1;
@@ -2540,6 +2549,7 @@ void vgaemu_adj_cfg(unsigned what, unsigned msg)
       int vertical_multiplier;
       int vertical_blanking_start;
       int vertical_blanking_end;
+      int char_height;
       int height;
       vertical_total = 
 	      vga.crtc.data[0x6] + 
@@ -2548,7 +2558,7 @@ void vgaemu_adj_cfg(unsigned what, unsigned msg)
       vertical_retrace_start = 
 	      vga.crtc.data[0x10] +
 	      ((vga.crtc.data[0x7] & 0x4) << (8 - 2)) +
-	      ((vga.crtc.data[0x7] & 0xF0) << (9 - 7));
+	      ((vga.crtc.data[0x7] & 0x80) << (9 - 7));
       vertical_retrace_end = vga.crtc.data[0x11]  & 0x0F;
       vertical_display_end = 
 	      vga.crtc.data[0x12] +
@@ -2560,8 +2570,8 @@ void vgaemu_adj_cfg(unsigned what, unsigned msg)
 	      ((vga.crtc.data[0x9] & 0x20) << (9 - 5));
       vertical_blanking_end =
 	      vga.crtc.data[0x16] & 0x7F;
-      vertical_multiplier = ((vga.crtc.data[0x9] & 0x1F) +1) <<
-	      ((vga.crtc.data[0x9] & 0x80) >> 7);
+      char_height = (vga.crtc.data[0x9] & 0x1f) + 1;
+      vertical_multiplier = char_height << ((vga.crtc.data[0x9] & 0x80) >> 7);
       height = (vertical_display_end +1) / vertical_multiplier;
       vga_msg("vgaemu_adj_cfg: vertical_total = %d\n", vertical_total);
       vga_msg("vgaemu_adj_cfg: vertical_retrace_start = %d\n", vertical_retrace_start);
@@ -2575,8 +2585,17 @@ void vgaemu_adj_cfg(unsigned what, unsigned msg)
         vga.line_compare = vga.crtc.line_compare / vertical_multiplier;
         dirty_all_video_pages();
       }
-      if (vga.height != height) {
+      if (vga.mode_class == TEXT) {
+        height *= char_height;
+      }
+      /* By Eric (eric@coli.uni-sb.de):                        */
+      /* Required for 80x100 CGA "text graphics" with 8x2 font */
+      if (vga.height != height || vga.char_height != char_height) {
         vga.height = height;
+	vga.text_height = height / char_height;
+        vga.char_height = char_height;
+        vga_msg("vgaemu_adj_cfg: text_height=%d height=%d char_height=%d\n",
+                height, vertical_display_end+1, vga.char_height);
         vga.reconfig.display = 1;
       }
       if (vga.line_compare == 0) vga.line_compare = vga.height;
@@ -2599,7 +2618,11 @@ void vgaemu_adj_cfg(unsigned what, unsigned msg)
       horizontal_blanking_end = vga.crtc.data[0x3] & 0xF;
       horizontal_retrace_start = vga.crtc.data[0x4];
       horizontal_retrace_end = vga.crtc.data[0x5] & 0xF;
-      multiplier = (vga.mode_class == TEXT) ? 9 : (vga.mode_type == P8) ? 4 : 8;
+      if (vga.mode_class == TEXT) {
+        multiplier = 9 - (vga.seq.data[1] & 1);
+      } else {
+	multiplier = (vga.mode_type == P8) ? 4 : 8;
+      }
       width = horizontal_display_end * multiplier;
       vga_msg("vgaemu_adj_cfg: horizontal_total = %d\n", horizontal_total);
       vga_msg("vgaemu_adj_cfg: horizontal_retrace_start = %d\n", horizontal_retrace_start);
@@ -2609,9 +2632,10 @@ void vgaemu_adj_cfg(unsigned what, unsigned msg)
       vga_msg("vgaemu_adj_cfg: horizontal_display_end = %d\n", horizontal_display_end);
       vga_msg("vgaemu_adj_cfg: multiplier = %d\n", multiplier);
       vga_msg("vgaemu_adj_cfg: width = %d\n", width);
-      if (vga.width != width) {
-	 vga.width = width;
-	 vga.reconfig.display = 1;
+      if ((vga.width != width) || (vga.char_width != multiplier)) {
+        vga.width = width;
+        vga.char_width = (multiplier >= 8) ? multiplier : 8;
+        vga.reconfig.display = 1;
       }
       break;
     }
@@ -2630,6 +2654,7 @@ void vgaemu_adj_cfg(unsigned what, unsigned msg)
         dirty_all_video_pages();
       }
       if (vga.line_compare == 0) vga.line_compare = vga.height;
+      break;
     }
     default:
       vga_msg("vgaemu_adj_cfg: unknown item %u\n", what);
