@@ -1215,7 +1215,11 @@ mouse_set_gcur(void)
   memcpy((void *)mouse.graphcursormask,ptr+16,32);
 
   /* compile it so that it can acutally be drawn. */
-  if (mice->type != MOUSE_X && mice->type != MOUSE_XTERM) {
+  if (mice->type != MOUSE_X && mice->type != MOUSE_XTERM 
+#ifdef USE_GPM
+      && mice->type != MOUSE_GPM
+#endif
+      ) {
     define_graphics_cursor((short *)mouse.graphscreenmask,(short *)mouse.graphcursormask);
   }
 }
@@ -1863,7 +1867,11 @@ dosemu_mouse_init(void)
   }
   else 
 #endif
-  if (!Mouse_xterm.init()) {
+  if (
+#ifdef USE_GPM
+      !Mouse_gpm.init() &&
+#endif
+      !Mouse_xterm.init()) {
     if (mice->intdrv) {
       struct stat buf;
       m_printf("Opening internal mouse: %s\n", mice->dev);
@@ -2007,6 +2015,12 @@ dosemu_mouse_close(void)
     }
     return;
   }
+#ifdef USE_GPM
+  if (mice->type == MOUSE_GPM) {
+    Mouse_gpm.close();
+    return;
+  }
+#endif
   
   if (mice->intdrv && mice->fd != -1 ) {
     if (mice->oldset) {

@@ -453,6 +453,13 @@ void DOSEMUMouseEvents(void)
         
 	int nBytes, nBytesProc;
 
+#ifdef USE_GPM
+	if (mice->type == MOUSE_GPM) {
+	  Mouse_gpm.run();
+	  mouse_event();
+	  return;
+	}
+#endif
 	if (mice->type != MOUSE_X && mice->type != MOUSE_XTERM)
 	  nBytes = RPT_SYSCALL(read(mice->fd, (char *)(rBuf+qEnd),
 	    sizeof(rBuf)-qEnd));
