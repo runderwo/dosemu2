@@ -2,7 +2,7 @@
 ANNOUNCEMENT
 ~~~~~~~~~~~~
 The DOSEMU team is proud to announce DOSEMU 1.2.0,
-the PC Emulator for x86 based *nix.
+the PC Emulator for x86 based Linux.
 
 WHAT IS DOSEMU?
 ~~~~~~~~~~~~~~~
@@ -40,12 +40,51 @@ worth noting:
     normal user's $HOME and runs 'out-of-the-box' without any further
     configuration (no root rights needed).
 
-
+WHAT IS NEW against version 1.0.2.1?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- Many bugs have been fixed
+- Easier configuration and installation from source code
+- Much improved DPMI support
+- Unicode support: translates between many different codepages and 
+  character sets for keyboards, terminals and copy & paste in X.
+- Much improved sound support, including SoundBlaster 16 and
+  Midi emulation (but no OPL3 FM / Adlib yet)
+- Improved VGA emulation in X
+- Fullscreen support in X using the Ctrl-Alt-F hotkey
+- Console improvements: by avoiding POST more graphics cards can
+  be accessed directly in the "plainvga" mode. Raw keyboard support
+  now also works without special privileges.
+- Many improvements to the networking code (TUN/TAP)
+- Improved PIC (Programmable Interrupt Controller) emulation
+- Joystick support
+- xterm mouse support (including PUTTY)
+- DOSEMU shows the running DOS program in X and xterm title bars
+- Better terminal support (more keys are recognized)
+- Improved I/O performance using asynchronous I/O.
+- Added large file support for file locking.
+- Security:
+  * DPMI in suid-root DOSEMU is no longer inherently insecure; DOSEMU
+    now drops its root priviliges after initializing with the exception
+    of a forked off "I/O port server" (if necessary)
+  * DOSEMU can be run via sudo in the same way as suid-root (it will 
+    revert to the identity of the original user) -- therefore it is
+    no longer necessary to install two seperate DOSEMUs (one suid-root
+    and one non-suid-root copy) for security. One non-suid-root copy is
+    all you need if you use sudo.
+    As a side-effect dosemu.users is no longer necessary; without a 
+    dosemu.users file DOSEMU will only use its root privileges if it is 
+    run on the Linux console.
+  * Partition access, mouse access (console only) and serial access
+    are no longer automatically accomplished using root privileges
+    but must be regulated via permissions on the relevant /dev/xxx
+    devices.
+  * Note that, as before, root permissions are in general not
+    necessary if DOSEMU is run in a terminal or in X.
 
 REQUIREMENTS
 ~~~~~~~~~~~~
   - Linux >= 2.0.30 (with IPC support, IPX support optional)
-  - any DOS to boot (FreeDos is contained in the dosemu-freedos-*-bin.tgz
+  - any DOS to boot (FreeDos is supplied with the dosemu-freedos-*-bin.tgz
     tarball and in the RPM)
 
 When compiling dosemu yourself:
@@ -108,10 +147,9 @@ you to http://www.freedos.org ;-)
 
 WHERE TO GET IT:
 ~~~~~~~~~~~~~~~~
-The DOSEMU PC Emulator can be downloaded from the following FTP sites:
+The DOSEMU PC Emulator can be downloaded at:
 
   http://sourceforge.net/project/showfiles.php?group_id=49784
-  ftp://ftp.ibiblio.org/pub/Linux/system/emulators/dosemu/
 
 The binary distribution is dynamically linked against glibc-2.2 and libX*
 from XFree86. It should run on all recent Linux distributions.
