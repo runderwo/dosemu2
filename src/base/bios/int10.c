@@ -542,6 +542,10 @@ static boolean X_set_video_mode(int mode) {
   WRITE_WORD(BIOS_CURSOR_SHAPE, 0x0607);
 
   WRITE_WORD(BIOS_VIDEO_PORT, vga.config.mono_port ? 0x3b4 : 0x3d4);
+  if (mode == 0x6)
+    WRITE_BYTE(BIOS_VDU_COLOR_REGISTER, 0x3f);
+  else if (mode <= 0x7)
+    WRITE_BYTE(BIOS_VDU_COLOR_REGISTER, 0x30);
 
   switch(vga.char_height) {
     case 14:
@@ -1597,13 +1601,25 @@ void int10_new(void) /* with X but without dualmon */
       break;
 
 
-    case 0x0b:		/* set bg/border color */
-      /* vgaemu does not use it!                             */
-      /* HI(bx) is supposed to be 0 here, no reason given.   */
-      i10_msg("set bg/border color to %x\n",LO(bx));
-      Attr_set_entry(0x11 /* OVERSCAN */, LO(bx));
+    case 0x0b:         /* set palette/bg/border color */
+      {
+       unsigned char currentpalette = READ_BYTE(BIOS_VDU_COLOR_REGISTER);
+       i10_msg("set palette or bg/border, bx=%x\n",LWORD(ebx));
+       if (HI(bx) == 0) {
+         currentpalette &= ~0x1f;
+         currentpalette |= LO(bx) & 0x1f;
+       } else if (HI(bx) == 1) {
+         if (LO(bx))
+           currentpalette |= 0x20;
+         else
+           currentpalette &= ~0x20;
+       } else {
+         break;
+       }
+       Misc_set_color_select(currentpalette);
+       WRITE_BYTE(BIOS_VDU_COLOR_REGISTER, currentpalette);
+      }
       break;
-
 
     case 0x0c:		/* write pixel */
       if(!using_text_mode())

@@ -434,6 +434,10 @@ int VGA_emulate_outb(ioport_t port, Bit8u value)
       if(!vga.config.mono_port) CRTC_write_value(value);
       break;
 
+    case COLOR_SELECT:			/* 0x3d9 */
+      if(!vga.config.mono_port) Misc_set_color_select(value);
+      break;
+
     case FEATURE_CONTROL_W:		/* 0x3da */
       if(!vga.config.mono_port) Misc_set_feature_ctrl(value);
       break;
@@ -2577,6 +2581,8 @@ void vgaemu_adj_cfg(unsigned what, unsigned msg)
 	      vga.crtc.data[0x16] & 0x7F;
       char_height = (vga.crtc.data[0x9] & 0x1f) + 1;
       vertical_multiplier = char_height << ((vga.crtc.data[0x9] & 0x80) >> 7);
+      /* see VGADOC: CGA is special for reg 9 */
+      if(vga.mode_type == CGA) vertical_multiplier = char_height;
       height = (vertical_display_end +1) / vertical_multiplier;
       vga_msg("vgaemu_adj_cfg: vertical_total = %d\n", vertical_total);
       vga_msg("vgaemu_adj_cfg: vertical_retrace_start = %d\n", vertical_retrace_start);
@@ -2592,6 +2598,14 @@ void vgaemu_adj_cfg(unsigned what, unsigned msg)
       }
       if (vga.mode_class == TEXT) {
         height *= char_height;
+      } else {
+        char_height = height / 25;
+        if (char_height > 16)
+          char_height = 16;
+        else if (char_height > 14)
+          char_height = 14;
+        else
+          char_height = 8;
       }
       /* By Eric (eric@coli.uni-sb.de):                        */
       /* Required for 80x100 CGA "text graphics" with 8x2 font */
