@@ -185,12 +185,14 @@ void handle_dbg_input(void)
   int n;
   do {
     n=read(fdin, buf, sizeof(buf));
-  } while (n == EAGAIN);
+  } while (n < 0 && errno == EAGAIN);
   if (n >0) {
     if ((p=strchr(buf,1))!=NULL) n=p-buf;
     write(1, buf, n);
     if (p!=NULL) exit(0);
   }
+  if (n == 0)
+    exit(1);
 }
 
 
@@ -250,7 +252,7 @@ int main (int argc, char **argv)
     exit(1);
   }
 
-  write(fdout,"\n",1);
+  write(fdout,"r0\n",3);
   do {
     FD_SET(fdin, &readfds);
     FD_SET(0, &readfds);   /* stdin */

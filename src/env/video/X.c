@@ -444,6 +444,8 @@ static int sel_start_row = -1, sel_end_row = -1, sel_start_col, sel_end_col;
 static unsigned short *sel_start = NULL, *sel_end = NULL;
 static u_char *sel_text = NULL;
 static Atom compound_text_atom = None;
+static Atom utf8_text_atom = None;
+static Atom text_atom = None;
 static Boolean doing_selection = FALSE, visible_selection = FALSE;
 #endif
 
@@ -515,6 +517,7 @@ static int NewXErrorHandler(Display *, XErrorEvent *);
 static char X_title_emuname [X_TITLE_EMUNAME_MAXLEN] = {0};
 char X_title_appname [X_TITLE_APPNAME_MAXLEN] = {0};		/* used in plugin/commands/comcom.c */
 static int X_title_show_appname = 1;
+static int X_change_config(unsigned, void *);  /* modify X config data from DOS */
 
 /* colormap related stuff */
 static void graphics_cmap_init(void);
@@ -602,7 +605,8 @@ struct video_system Video_X =
    X_close,      
    X_set_videomode,      
    X_update_screen,
-   X_update_cursor
+   X_update_cursor,
+   X_change_config
 };
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
@@ -822,8 +826,10 @@ int X_init()
     XSetClassHint(display, fullscreenwindow, &xch);
   }
 #if CONFIG_X_SELECTION
-  /* Get atom for COMPOUND_TEXT type. */
+  /* Get atom for COMPOUND_TEXT/UTF8/TEXT type. */
   compound_text_atom = XInternAtom(display, "COMPOUND_TEXT", False);
+  utf8_text_atom = XInternAtom(display, "UTF8_STRING", False);
+  text_atom = XInternAtom(display, "TEXT", False);
 #endif
   /* Delete-Window-Message black magic copied from xloadimage. */
   proto_atom  = XInternAtom(display, "WM_PROTOCOLS", False);
@@ -1223,7 +1229,7 @@ static void X_keymap_init()
  * of X and the VGA emulation during a DOSEMU session.
  * It is used by the xmode.exe program that comes with DOSEMU.
  */
-int X_change_config(unsigned item, void *buf)
+static int X_change_config(unsigned item, void *buf)
 {
   int err = 0;
   XFontStruct *xfont;
@@ -1347,7 +1353,11 @@ int X_change_config(unsigned item, void *buf)
       X_printf("X: X_change_config: background_pause %i\n", *((int *) buf));
       config.X_background_pause = *((int *) buf);
       break;
-      
+
+    case X_GET_TITLE_APPNAME:
+      snprintf (buf, X_TITLE_APPNAME_MAXLEN, "%s", X_title_appname);
+      break;
+
     default:
       err = 100;
   }
@@ -1488,7 +1498,7 @@ void X_set_mouse_cursor(int yes, int mx, int my, int x_range, int y_range)
 			else
 				return;
 		}
-		if (!mouse_really_left_window)
+		if (have_focus)
 			XWarpPointer(display, None, mainwindow, 0, 0, 0, 0,
 				     shift_x + (w_x_res * mx)/x_range,
 				     shift_y + (w_y_res * my)/y_range);
@@ -2766,7 +2776,7 @@ static void X_vidmode(int w, int h, int *new_width, int *new_height)
     shift_y = (nh - w_y_res)/2;
   }
 
-  if (!grab_active && (mx != 0 || my != 0) && !mouse_really_left_window)
+  if (!grab_active && (mx != 0 || my != 0) && have_focus)
     XWarpPointer(display, None, mainwindow, 0, 0, 0, 0,
                  mx + shift_x, my + shift_y);
   *new_width = nw;
@@ -3771,14 +3781,15 @@ void send_selection(Time time, Window requestor, Atom target, Atom property)
 			(unsigned long) requestor);
 		e.xselection.property = None;
 	}
-	else if ((target == XA_STRING) || (target == compound_text_atom)) {
-		X_printf("X: selection: %s\n",sel_text);   
+	else if ((target == XA_STRING) || (target == compound_text_atom) ||
+		 (target == utf8_text_atom) || (target == text_atom)) {
+		X_printf("X: selection: %s\n",sel_text);
 		e.xselection.target = target;
 		XChangeProperty(display, requestor, property, target, 8, PropModeReplace, 
 			sel_text, strlen(sel_text));
 		e.xselection.property = property;
 		X_printf("X: Selection sent to window 0x%lx as %s\n", 
-			(unsigned long) requestor, (target==XA_STRING)?"string":"compound_text");
+			(unsigned long) requestor, XGetAtomName(display, target));
 	}
 	else
 	{

@@ -112,7 +112,6 @@ __asm__("___START___: jmp _emulate\n");
 #include "serial.h"
 #include "int.h"
 #include "bitops.h"
-#include "port.h"
 #include "pic.h"
 #include "dpmi.h"
 #include "priv.h"   /* for priv_init */
@@ -361,7 +360,6 @@ emulate(int argc, char **argv)
     cpu_setup();		/* setup the CPU */
     pcibios_init();
     pci_setup();
-    hardware_setup();		/* setup any hardware */
     extra_port_init();		/* setup ports dependent on config */
     signal_init();              /* initialize sig's & sig handlers */
     map_video_bios();           /* map the video bios */
@@ -498,7 +496,10 @@ leavedos(int sig)
 
     /* try to notify dosdebug */
 #ifdef USE_MHPDBG
-    mhp_exit_intercept(sig);
+    if (fault_cnt > 0)
+      error("leavedos() called from within a signal context!\n");
+    else
+      mhp_exit_intercept(sig);
 #endif
     
     itv.it_interval.tv_sec = itv.it_interval.tv_usec = 0;
@@ -533,7 +534,7 @@ leavedos(int sig)
 	*/
        if (portserver_pid)
           port_safe_outb(0x61, port_safe_inb(0x61)&0xFC); /* turn off any sound */
-     }
+    }
 
 #ifdef SIG
     g_printf("calling SIG_close\n");

@@ -1203,7 +1203,7 @@ mouse_set_gcur(void)
   memcpy((void *)mouse.graphcursormask,ptr+16,32);
 
   /* compile it so that it can acutally be drawn. */
-  if (mice->type != MOUSE_X) {
+  if (mice->type != MOUSE_X && mice->type != MOUSE_XTERM) {
     define_graphics_cursor((short *)mouse.graphscreenmask,(short *)mouse.graphcursormask);
   }
 }
@@ -1661,8 +1661,7 @@ do_mouse_irq()
 	     LWORD(cs), LWORD(eip));
 }
 
-void
-mouse_event()
+void mouse_event(void)
 {
   if (mouse.mask & mouse_events && (mouse.cs || mouse.ip))
     do_irq();
@@ -1693,6 +1692,9 @@ mouse_do_cur(void)
     return;
   }
 #endif
+  if (mice->type == MOUSE_XTERM)
+    return;
+
   if (!scr_state.current) 
   	return;
 
@@ -1849,7 +1851,7 @@ dosemu_mouse_init(void)
   }
   else 
 #endif
-  {
+  if (!Mouse_xterm.init()) {
     if (mice->intdrv) {
       struct stat buf;
       m_printf("Opening internal mouse: %s\n", mice->dev);
@@ -1894,6 +1896,11 @@ dosemu_mouse_init(void)
     mouse.init_speed_y = 8;
   }
   
+  if (mouse_is_ps2()) {
+    pic_seti(PIC_IMOUSE, DOSEMUMouseEvents, 0, do_mouse_irq);
+    pic_unmaski(PIC_IMOUSE);
+  }
+
   /* We set the defaults at the end so that we can test the mouse type */
   mouse_reset(1);		/* Let's set defaults now ! */
   m_printf("MOUSE: INIT complete\n");
@@ -1983,6 +1990,10 @@ dosemu_mouse_close(void)
   int result;
 
   if (mice->type == MOUSE_X) return;   
+  if (mice->type == MOUSE_XTERM) {
+    Mouse_xterm.close();
+    return;
+  }
   
   if (mice->intdrv && mice->fd != -1 ) {
     if (mice->oldset) {

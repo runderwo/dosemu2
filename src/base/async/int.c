@@ -20,6 +20,7 @@
 #include <errno.h>
 
 #include "config.h"
+
 #include "emu.h"
 #include "serial.h"
 #include "memory.h"
@@ -44,6 +45,10 @@
 #include "joystick.h"
 #include "aspi.h"
 
+#ifdef USE_MHPDBG
+#include "mhpdbg.h"
+#endif
+
 #ifdef USING_NET
 #include "ipx.h"
 #endif
@@ -55,12 +60,9 @@
 
 #include "keyb_server.h"
 
-#undef  DEBUG_INT1A
+#include "userhook.h"
 
-#if X_GRAPHICS
-/* prototype is in X.h -- 1998/03/08 sw */
-int X_change_config(unsigned, void *);
-#endif
+#undef  DEBUG_INT1A
 
 typedef int interrupt_function_t(void);
 static interrupt_function_t *interrupt_function[0x100];
@@ -81,6 +83,16 @@ static struct timeval scr_tv;        /* For translating UNIX <-> DOS times */
 
 /* set if some directories are mounted during startup */
 int redir_state = 0;
+
+static char title_hint[9] = "";
+static char title_current[TITLE_APPNAME_MAXLEN];
+static int can_change_title = 0;
+
+static void change_window_title(char *title)
+{
+   if (Video->change_config)
+      Video->change_config(CHG_TITLE_APPNAME, title);
+} 
 
 static void kill_time(long usecs) {
    hitimer_t t_start, t_dif;
@@ -259,7 +271,7 @@ int dos_helper(void)
     }
 
   case DOS_HELPER_SHOW_BANNER:		/* show banner */
-    p_dos_str("\n\nLinux DOS emulator " VERSTR " Date: " VERDATE " \n");
+    p_dos_str("\n\nLinux DOS emulator " VERSTR " $Date$\n");
     p_dos_str("Last configured at %s on %s\n", CONFIG_TIME, CONFIG_HOST);
 #if 1 
     p_dos_str("This is work in progress.\n");
@@ -533,12 +545,9 @@ int dos_helper(void)
         break;
 #endif
     case DOS_HELPER_XCONFIG:
-#if X_GRAPHICS
-	if (config.X) {
-		LWORD(eax) = X_change_config((unsigned) LWORD(edx), SEG_ADR((void *), es, bx));
-	} else 
-#endif /* X_GRAPHICS */
-	{
+	if (Video->change_config) {
+		LWORD(eax) = Video->change_config((unsigned) LWORD(edx), SEG_ADR((void *), es, bx));
+	} else {
 		_AX = -1;
 	}
         break;
@@ -1186,14 +1195,36 @@ static int int21(void)
       return 0;
     }
 
-  case 0x4B:			/* program load */
-    if(LO(ax) != 0x0)
-      return 0;			/* else as for 0x4c */
-  case 0x4C:                    /* program exit */
-    if(pic_icount) {
-      pic_resched();
-    }
-    return 0;
+  case 0x4B: {			/* program load */
+      char *ptr, *tmp_ptr;
+      char cmdname[TITLE_APPNAME_MAXLEN];
+      char *str = SEG_ADR((char*), ds, dx);
+      if (!Video->change_config)
+        return 0;
+      if (!strlen(title_hint) || strcmp(title_current, title_hint) != 0)
+        return 0;
+
+      ptr = strrchr(str, '\\');
+      if (!ptr) ptr = str;
+      else ptr++;
+      ptr += strspn(ptr, " \t");
+      if (!strlen(ptr))
+        return 0;
+      tmp_ptr = ptr;
+      while (*tmp_ptr) {	/* Check whether the name is valid */
+        if (iscntrl(*tmp_ptr++))
+          return 0;
+      }
+      strncpy(cmdname, ptr, TITLE_APPNAME_MAXLEN-1);
+      cmdname[TITLE_APPNAME_MAXLEN-1] = 0;
+      ptr = strchr(cmdname, '.');
+      if (ptr) *ptr = 0;
+      /* change the title */
+      strcpy(title_current, cmdname);
+      change_window_title(title_current);
+      can_change_title = 0;
+      return 0;
+  }
 
   default:
     return 0;
@@ -1431,13 +1462,13 @@ static int int05(void)
 
 /* CONFIGURATION */
 static int int11(void) {
-    LWORD(eax) = configuration;
+    LWORD(eax) = READ_WORD(BIOS_CONFIGURATION);
     return 1;
 }
 
 /* MEMORY */
 static int int12(void) {
-    LWORD(eax) = config.mem_size;
+    LWORD(eax) = READ_WORD(BIOS_MEMORY_SIZE);
     return 1;
 }
 
@@ -1609,7 +1640,7 @@ static int int2f(void)
        LWORD(eax), LWORD(ebx), LWORD(ecx), LWORD(edx), LWORD(ds), LWORD(es));
 #endif
   switch (LWORD(eax)) {
-  case INT2F_IDLE_MAGIC: {  /* magic "give up time slice" value */
+    case INT2F_IDLE_MAGIC: {  /* magic "give up time slice" value */
       static int trigger = 0;
       if (config.hogthreshold && CAN_SLEEP()) {
         if (trigger++ >= config.hogthreshold * 100) {
@@ -1622,12 +1653,43 @@ static int int2f(void)
     }
 
 #ifdef IPX
-  case INT2F_DETECT_IPX:  /* TRB - detect IPX in int2f() */
-    if (config.ipxsup && IPXInt2FHandler())
-      return 1;
-    break;
+    case INT2F_DETECT_IPX:  /* TRB - detect IPX in int2f() */
+      if (config.ipxsup && IPXInt2FHandler())
+        return 1;
+      break;
 #endif
+
+    case 0xae00: {
+      char cmdname[TITLE_APPNAME_MAXLEN];
+      char appname[TITLE_APPNAME_MAXLEN];
+      struct lowstring *str = SEG_ADR((struct lowstring *), ds, si);
+      u_short psp_seg = sda_cur_psp(sda);
+      struct MCB *mcb = (struct MCB *)SEG2LINEAR(psp_seg - 1);
+      int len;
+      char *ptr, *tmp_ptr;
+      if (!Video->change_config)
+        break;
+
+      strncpy(title_hint, mcb->name, 8);
+      title_hint[8] = 0;
+      len = MIN(str->len, TITLE_APPNAME_MAXLEN - 1);
+      memcpy(cmdname, str->s, len);
+      cmdname[len] = 0;
+      ptr = cmdname + strspn(cmdname, " \t");
+      if (!strlen(ptr))
+	return 0;
+      tmp_ptr = ptr;
+      while (*tmp_ptr) {	/* Check whether the name is valid */
+        if (iscntrl(*tmp_ptr++))
+          return 0;
+      }
+      strcpy(title_current, title_hint);
+      snprintf(appname, TITLE_APPNAME_MAXLEN, "%s ( %s )",
+        title_current, strlower(ptr));
+      change_window_title(appname);
+      return 0;
     }
+  }
 
   switch (HI(ax)) {
   case 0x11:              /* redirector call? */
@@ -2076,6 +2138,8 @@ void setup_interrupts(void) {
   if (config.dualmon == 2) {
     interrupt_function[0x42] = interrupt_function[0x10];
   }
+
+  set_int21_revectored(redir_state = 1);
 }
 
 
@@ -2127,4 +2191,65 @@ void int_vector_setup(void)
   set_int21_revectored(0);
 #endif
 
+}
+
+static void update_xtitle(void)
+{
+  char cmdname[9];
+  char *cmd_ptr, *tmp_ptr;
+  u_short psp_seg = sda_cur_psp(sda);
+  struct MCB *mcb = (struct MCB *)SEG2LINEAR(psp_seg - 1);
+  int force_update = !strlen(title_hint);
+
+  strncpy(cmdname, mcb->name, 8);
+  cmdname[8] = 0;
+  cmd_ptr = tmp_ptr = cmdname + strspn(cmdname, " \t");
+  while (*tmp_ptr) {	/* Check whether the name is valid */
+    if (iscntrl(*tmp_ptr++))
+      return;
+  }
+
+  if (force_update || strcmp(title_current, title_hint) != 0) {
+    if (force_update || strcmp(cmd_ptr, title_hint) == 0) {
+      if (force_update || can_change_title) {
+	if (strcmp(title_current, cmd_ptr) == 0)
+	  return;
+        strcpy(title_current, cmd_ptr);
+        change_window_title(title_current);
+      }
+    } else {
+      can_change_title = 1;
+    }
+  }
+}
+
+void do_periodic_stuff(void)
+{
+    handle_signals();
+
+    /* catch user hooks here */
+    if (uhook_fdin != -1) uhook_poll();
+
+    /* here we include the hooks to possible plug-ins */
+    #define VM86_RETURN_VALUE retval
+    #include "plugin_poll.h"
+    #undef VM86_RETURN_VALUE
+
+
+#ifdef USE_MHPDBG  
+    if (mhpdbg.active) mhp_debug(DBG_POLL, 0, 0);
+#endif
+    /*
+     * This is here because ioctl() is non-reentrant, and signal handlers
+     * may have to use ioctl().  This results in a possible (probable)
+     * time lag of indeterminate length (and a bad return value). Ah, life
+     * isn't perfect.
+     * 
+     * I really need to clean up the queue functions to use real queues.
+     */
+    if (iq.queued)
+	do_queued_ioctl();
+
+    if (Video->change_config)
+	update_xtitle();
 }

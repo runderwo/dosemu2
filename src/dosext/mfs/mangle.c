@@ -35,6 +35,7 @@ Modified by O.V.Zhirov, July 1998
 #ifdef DOSEMU
 #include "mangle.h"
 #include "mfs.h"
+#include "dos2linux.h"
 #include "emu.h"
 #else
 #include "includes.h"

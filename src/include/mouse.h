@@ -30,6 +30,7 @@
 #define MOUSE_HITACHI 8
 #define MOUSE_X 9
 #define MOUSE_IMPS2 10
+#define MOUSE_XTERM 11
 
 /* types of mouse events */
 #define DELTA_CURSOR		1
@@ -53,6 +54,7 @@ typedef struct  {
   int flags;
   boolean async_io;
   boolean intdrv;
+  boolean use_absolute; /* use absolute mouse addressing */
   boolean emulate3buttons;
   boolean has3buttons;
   boolean cleardtr;
@@ -138,6 +140,22 @@ struct mouse_struct {
     unsigned short pkg;
   } ps2;
 };
+
+struct mouse_client {
+  const char *name;
+  int    (*init)(void);
+  void   (*close)(void);
+  void   (*run)(void);         /* handle mouse events */
+  void   (*set_cursor)(int action, int mx, int my, int x_range, int y_range);
+};
+
+extern struct mouse_client *Mouse;
+extern struct mouse_client Mouse_serial;
+extern struct mouse_client Mouse_raw;
+extern struct mouse_client Mouse_X;
+extern struct mouse_client Mouse_xterm;
+extern struct mouse_client Mouse_gpm;
+extern struct mouse_client Mouse_none;
 
 #ifdef HAVE_UNICODE_KEYB
 #include "keyboard.h"
