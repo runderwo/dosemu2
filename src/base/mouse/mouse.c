@@ -1868,7 +1868,14 @@ dosemu_mouse_init(void)
 #ifdef USE_GPM
       !Mouse_gpm.init() &&
 #endif
-      !Mouse_xterm.init()) {
+#ifdef HAVE_KEYBOARD_V1
+      /* old keyboard plugin has the terminal code included without
+         xterm mouse support */
+      1
+#else
+      !Mouse_xterm.init()
+#endif
+     ) {
     if (mice->intdrv) {
       struct stat buf;
       m_printf("Opening internal mouse: %s\n", mice->dev);
@@ -2018,6 +2025,7 @@ dosemu_mouse_close(void)
   int result;
 
   if (mice->type == MOUSE_X) return;   
+#ifndef HAVE_KEYBOARD_V1
   if (mice->type == MOUSE_XTERM) {
     if (sent_mouse_esc) {
       Mouse_xterm.close();
@@ -2025,6 +2033,7 @@ dosemu_mouse_close(void)
     }
     return;
   }
+#endif
 #ifdef USE_GPM
   if (mice->type == MOUSE_GPM) {
     Mouse_gpm.close();
