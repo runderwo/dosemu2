@@ -1,3 +1,22 @@
+2003/09/xx ver 1.2.0pre1 stable pre-release
+	From Bart
+	- miscemu.c:
+	  The retrace time is measured in microsecs, not ticks.
+	- src/plugin/: kbd_unicode/keymaps.c, keyboard/keymaps.c: Hungarian
+	  keyboard adjustments (anonymous contribution, see bug 687850)
+	From Stas
+	- Fix DPMI to be able to revector interrupts that are called by
+	  DPMI clients
+	- configure, configure.ac: small configure adjustments.
+	- src/dosext/sound/sound.c: Use only the current DMA channel on
+	  SB16.	 This allows the QV to work. QV is an MPEG4/DivX player for
+	  DOS!
+	- src/base/mouse/mouse.c: Enable mouse at startup in case the
+	  program doesn't do that manually.
+	- src/base/async/int.c: hogthreshold adjustment for the mouse code.
+	- src/plugin/kbd_unicode/: Makefile, getfd.c, getfd.h, keymaps.c:
+	  Update the getfd() console detection code with the one from kbd 1.08
+2003/09/17 ver 1.1.99.0/1.2.0pre0 FORK POINT this is 1.1.5.3 unchanged.
 2003/07/15 ver 1.1.5.3 unofficial pre-release
 	From Clarence
 	- minor config tweaks $_X_backgroundfreeze -> $_X_background_pause,
