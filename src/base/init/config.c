@@ -455,6 +455,16 @@ void secure_option_preparse(int *argc, char **argv)
     }
     dosemu_hdimage_dir_path = opt;
   }
+
+  opt = get_option("-n", 0);
+  if (opt) {
+    if (runningsuid) {
+      fprintf(stderr, "The -n option to bypass the system configuration files "
+	      "is not allowed with sudo/suid-root\n");
+      exit(0);
+    }
+    DOSEMU_USERS_FILE = NULL;
+  }
 }
 
 static void config_pre_process(void)
@@ -743,7 +753,7 @@ config_init(int argc, char **argv)
     opterr = 0;
     if (strcmp(config_script_name, DEFAULT_CONFIG_SCRIPT))
       confname = config_script_path;
-    while ((c = getopt(argc, argv, "ABCcF:f:I:kM:D:P:VNtsgh:H:x:KL:m23456e:E:dXY:Z:o:Ou:U:")) != EOF) {
+    while ((c = getopt(argc, argv, "ABCcF:f:I:kM:D:P:VNtsgh:H:x:KL:mn23456e:E:dXY:Z:o:Ou:U:")) != EOF) {
 	usedoptions[(unsigned char)c] = c;
 	switch (c) {
 	case 'h':
@@ -1069,6 +1079,7 @@ usage(char *basename)
 	"    -e SIZE enable SIZE K EMS RAM\n"
 	"    -F use File as global config-file\n"
 	"    -f use dosrcFile as user config-file\n"
+	"    -n causes DOSEMU to bypass the system configuration file\n"
 	"    -L load and execute DEXE File\n"
 	"    -I insert config statements (on commandline)\n"
 	"    -h dump configuration to stderr and exit (sets -D+c)\n"

@@ -89,9 +89,16 @@ dosemu-freedos*sources.tgz tarball.
 
 CONFIGURATION
 -------------
+
 Optional configuration is possible by editing the file conf/dosemurc.example
 and copying it to ~/.dosemurc. Advanced configuration can be accomplished
 using global.conf in combination with the -F option.
+
+Note that, unlike the situation in installations from source, distributors,
+and the RPM, /etc/dosemu.conf and /etc/dosemu/dosemu.conf are NOT used in
+this setup, unless you make dosemu.bin suid-root, use sudo or replace
+IGNORE_DOSEMU_CONF="-n" by IGNORE_DOSEMU_CONF="" in the dosemu script.
+The file conf/dosemu.conf (as opposed to DOSEMU 1.0.2.x) is also ignored.
 
 POLICIES
 --------

@@ -12,6 +12,12 @@ SYSTEM_XFONTS_PATH=NOT_SYSTEM_WIDE
 SYSTEM_BIN_PATH=NOT_SYSTEM_WIDE
 test "$SYSTEM_INSTALL_PATH" != "NOT_SYSTEM_WIDE" && IS_SYSTEM_WIDE=1
 
+# ignore dosemu.conf by default for non-systemwide installations
+IGNORE_DOSEMU_CONF=""
+if [ -z "$IS_SYSTEM_WIDE" ] ; then
+  IGNORE_DOSEMU_CONF="-n"
+fi
+
 usage () {
   echo "
 USAGE:
@@ -360,6 +366,10 @@ fi
 
 if [ -n "$IS_SYSTEM_WIDE" ] ; then
   BINARY=$SYSTEM_BIN_PATH/dosemu.bin
+  if [ -u $BINARY ] ; then
+    # we should not ignore dosemu.conf if suid root
+    IGNORE_DOSEMU_CONF=""
+  fi
 else
   BINARY=$BOOT_DIR_PATH/bin/dosemu.bin
 fi
@@ -367,11 +377,13 @@ fi
 SUDO=""
 if [ -n "$USE_SUDO" ] ; then
   SUDO=sudo
+  # we should not ignore dosemu.conf if invoked via sudo
+  IGNORE_DOSEMU_CONF=""
 fi
 
 eval "set -- $SUFFIX"
 if [ -n "$STRING_I" ] ; then
-  exec $SUDO $BINARY $XFLAG "-I $STRING_I" "$@"
+  exec $SUDO $BINARY $IGNORE_DOSEMU_CONF $XFLAG "-I $STRING_I" "$@"
 else
-  exec $SUDO $BINARY $XFLAG "$@"
+  exec $SUDO $BINARY $IGNORE_DOSEMU_CONF $XFLAG "$@"
 fi
