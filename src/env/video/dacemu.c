@@ -77,8 +77,8 @@
 
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-#define DAC_READ_MODE 0
-#define DAC_WRITE_MODE 3
+#define DAC_READ_MODE 3
+#define DAC_WRITE_MODE 0
 
 #if !defined True
 #define False 0
@@ -377,6 +377,9 @@ void DAC_set_read_index(unsigned char index)
   vga.dac.read_index = index;
   vga.dac.pel_index = 'r';
   vga.dac.state = DAC_READ_MODE;
+
+  /* undefined behaviour by Starcon2 (write to 3C9 after 3C7) - clarence */
+  vga.dac.write_index = index + 1;
 }
 
 
@@ -419,8 +422,6 @@ unsigned char DAC_read_value()
   unsigned char ri = vga.dac.read_index;
 #endif
 
-  vga.dac.state = DAC_READ_MODE;
-  
   switch(vga.dac.pel_index) {
     case 'r':
       rv = vga.dac.rgb[vga.dac.read_index].r;
@@ -436,6 +437,9 @@ unsigned char DAC_read_value()
       rv = vga.dac.rgb[vga.dac.read_index].b;
       vga.dac.pel_index = 'r';
       vga.dac.read_index++;
+
+      /* observed behaviour on a real system - clarence */
+      vga.dac.write_index = vga.dac.read_index + 1;
       break;
 
     default:
@@ -469,8 +473,6 @@ void DAC_write_value(unsigned char value)
 {
   value &= (1 << vga.dac.bits) - 1;
 
-  vga.dac.state = DAC_WRITE_MODE;
-
   dac_deb(
     "DAC_write_value: dac.rgb[0x%02x].%c = 0x%02x\n",
     (unsigned) vga.dac.write_index, vga.dac.pel_index, (unsigned) value
@@ -494,6 +496,9 @@ void DAC_write_value(unsigned char value)
       vga.dac.rgb[vga.dac.write_index].b = value;
       vga.dac.pel_index = 'r';
       vga.dac.write_index++;
+      
+      /* observed behaviour on a real system - clarence */
+      vga.dac.read_index = vga.dac.write_index - 1;
       break;
 
     default:
