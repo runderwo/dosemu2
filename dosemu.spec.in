@@ -48,6 +48,7 @@ make DESTDIR=$RPM_BUILD_ROOT install
 %{_mandir}/ru/man1/dosemu.1*
 %{_mandir}/ru/man1/dosemu.bin.1*
 %{_mandir}/ru/man1/xdosemu.1*
+%{_datadir}/dosemu/commands
 %{_datadir}/dosemu/freedos
 %{_datadir}/dosemu/dosemu-bin.tgz
 %{_datadir}/dosemu/dosemu-freedos-bin.tgz
