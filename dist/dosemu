@@ -9,6 +9,7 @@
 SYSTEM_INSTALL_PATH=NOT_SYSTEM_WIDE
 SYSTEM_CONF_PATH=NOT_SYSTEM_WIDE
 SYSTEM_XFONTS_PATH=NOT_SYSTEM_WIDE
+SYSTEM_BIN_PATH=NOT_SYSTEM_WIDE
 test "$SYSTEM_INSTALL_PATH" != "NOT_SYSTEM_WIDE" && IS_SYSTEM_WIDE=1
 
 usage () {
@@ -242,7 +243,7 @@ if [ "`basename $ARG0`" = "xdosemu" ]; then
 fi
 
 if [ -z "$IS_SYSTEM_WIDE" ]; then
-  BOOT_DIR_PATH=`readlink $HOME/.dosemu/drives/c`/..
+  BOOT_DIR_PATH=`cd $HOME/.dosemu/drives && ls -l c | sed 's/.* -> //'`/..
 fi
 
 if [ -n "$XFLAG" ]; then
@@ -358,7 +359,7 @@ if [ $UID = 0 -a -f $HOME/.dosemurc ]; then
 fi
 
 if [ -n "$IS_SYSTEM_WIDE" ] ; then
-  BINARY=dosemu.bin
+  BINARY=$SYSTEM_BIN_PATH/dosemu.bin
 else
   BINARY=$BOOT_DIR_PATH/bin/dosemu.bin
 fi
