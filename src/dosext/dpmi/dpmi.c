@@ -2944,6 +2944,7 @@ void dpmi_fault(struct sigcontext_struct *scp)
 
   us *ssp;
   unsigned char *csp, *lina;
+  int esp_fixed = 0;
 
 #if 1
   /* Because of a CPU bug (see EMUFailures.txt:1.7.2), ESP can run to a
@@ -2958,6 +2959,7 @@ void dpmi_fault(struct sigcontext_struct *scp)
       D_printf("DPMI: ESP bug, esp=%#lx stack_bot=%#lx, cs32=%i ss32=%i\n",
 	_esp, stack_init_bot, Segments[_cs >> 3].is_32, Segments[_ss >> 3].is_32);
     _HWORD(esp) = 0;
+    esp_fixed = 1;
   }
 #endif
 
@@ -3554,13 +3556,10 @@ void dpmi_fault(struct sigcontext_struct *scp)
   } /* _trapno==13 */
   else {
     if (_trapno == 0x0c) {
-      if (Segments[_cs >> 3].is_32 && !Segments[_ss >> 3].is_32 && _HWORD(esp)) {
-        error("Stack Fault due to a CPU bug!\n"
-	      "For more information read a chapter \"Specification Clarifications\"\n"
-	      "section 4 of the document \"Intel386 DX Processor Specification Update\"\n"
-	      "at http://www.intel.com/design/intarch/specupdt/27287402.PDF\n"
-	      "If your program uses a dos4gw DOS extender, try dos32a extender\n"
-	      "instead, which may solve the problem.\n");
+      if (!Segments[_ss >> 3].is_32 && esp_fixed) {
+        error("Stack Fault, ESP corrupted due to a CPU bug.\n"
+	      "For more details on that problem and possible work-arounds,\n"
+	      "please read EMUfailure.txt, section 1.7.2.\n");
 #if 0
 	_HWORD(ebp) = 0;
 	_HWORD(esp) = 0;
