@@ -666,7 +666,7 @@ unsigned short AllocateDescriptors(int number_of_descriptors)
   return AllocateDescriptorsAt((next_ldt<<3) | 0x0007, number_of_descriptors);
 }
 
-static void FreeSegRegs(struct sigcontext_struct *scp, unsigned short selector)
+void FreeSegRegs(struct sigcontext_struct *scp, unsigned short selector)
 {
     if ((_ds | 7) == (selector | 7)) _ds = 0;
     if ((_es | 7) == (selector | 7)) _es = 0;
@@ -2792,6 +2792,7 @@ static void do_cpu_exception(struct sigcontext_struct *scp)
 
   D_printf("DPMI: do_cpu_exception(0x%02lx) at %#x:%#x\n",_trapno,
   	(int)_cs, (int)_eip);
+#if 0
   if (_trapno == 0xe) {
       set_debug_level('M', 9);
       error("DPMI: page fault. in dosemu?\n");
@@ -2801,6 +2802,7 @@ static void do_cpu_exception(struct sigcontext_struct *scp)
       D_printf(DPMI_show_state(scp));
       leavedos(0x5046);
   }
+#endif
 
   if ((_trapno != 0xe && _trapno != 0x3 && _trapno != 0x1)
 #ifdef X86_EMULATOR
@@ -2842,6 +2844,35 @@ static void do_cpu_exception(struct sigcontext_struct *scp)
   ssp = (us *) (GetSegmentBaseAddress(CLIENT_PMSTACK_SEL) +
 		(DPMI_CLIENT.is_32 ? PMSTACK_ESP : (PMSTACK_ESP&0xffff)));
 
+  /* Extended exception stack frame - DPMI 1.0 */
+  ssp -= 2, *((unsigned long *) ssp) = 0;	/* PTE */
+  ssp -= 2, *((unsigned long *) ssp) = _cr2;
+  *--ssp = (us) 0;
+  *--ssp = _gs;
+  *--ssp = (us) 0;
+  *--ssp = _fs;
+  *--ssp = (us) 0;
+  *--ssp = _ds;
+  *--ssp = (us) 0;
+  *--ssp = _es;
+  *--ssp = (us) 0;
+  *--ssp = _ss;
+  ssp -= 2, *((unsigned long *) ssp) = _esp;
+  ssp -= 2, *((unsigned long *) ssp) = _eflags;
+  *--ssp = (us) 0;
+  *--ssp = _cs;
+  ssp -= 2, *((unsigned long *) ssp) = _eip;
+  ssp -= 2, *((unsigned long *) ssp) = 0;
+  if (DPMI_CLIENT.is_32) {
+    *--ssp = (us) 0;
+    *--ssp = DPMI_CLIENT.DPMI_SEL;
+    ssp -= 2, *((unsigned long *) ssp) = DPMI_OFF + HLT_OFF(DPMI_return_from_ext_exception);
+  } else {
+    ssp -= 2, *((unsigned long *) ssp) = 0;
+    *--ssp = DPMI_CLIENT.DPMI_SEL; 
+    *--ssp = DPMI_OFF + HLT_OFF(DPMI_return_from_ext_exception);
+  }
+  /* Standard exception stack frame - DPMI 0.9 */
   if (DPMI_CLIENT.is_32) {
     *--ssp = (us) 0;
     *--ssp = _ss;
@@ -2852,10 +2883,14 @@ static void do_cpu_exception(struct sigcontext_struct *scp)
     ssp -= 2, *((unsigned long *) ssp) = _eip;
     ssp -= 2, *((unsigned long *) ssp) = _err;
     *--ssp = (us) 0;
-    *--ssp = DPMI_CLIENT.DPMI_SEL; 
+    *--ssp = DPMI_CLIENT.DPMI_SEL;
     ssp -= 2, *((unsigned long *) ssp) = DPMI_OFF + HLT_OFF(DPMI_return_from_exception);
-    PMSTACK_ESP -= 32;
   } else {
+    ssp -= 2, *((unsigned long *) ssp) = 0;
+    ssp -= 2, *((unsigned long *) ssp) = 0;
+    ssp -= 2, *((unsigned long *) ssp) = 0;
+    ssp -= 2, *((unsigned long *) ssp) = 0;
+
     *--ssp = _ss;
     *--ssp = (unsigned short) _esp;
     *--ssp = (unsigned short) ((_eflags&~IF)|(dpmi_eflags&IF));
@@ -2864,8 +2899,9 @@ static void do_cpu_exception(struct sigcontext_struct *scp)
     *--ssp = (unsigned short) _err;
     *--ssp = DPMI_CLIENT.DPMI_SEL; 
     *--ssp = DPMI_OFF + HLT_OFF(DPMI_return_from_exception);
-    PMSTACK_ESP -= 16;
   }
+  PMSTACK_ESP -= 0x58;
+
   _cs = DPMI_CLIENT.Exception_Table[_trapno].selector;
   _eip = DPMI_CLIENT.Exception_Table[_trapno].offset;
   D_printf("DPMI: Exception Table jump to %04x:%08lx\n",_cs,_eip);
@@ -3219,6 +3255,38 @@ void dpmi_fault(struct sigcontext_struct *scp)
 	    _ss = saved_ss;
 	    _esp = saved_esp;
 	  }
+
+	  if (_eflags & IF)
+	    dpmi_sti();
+
+        } else if (_eip==DPMI_OFF+1+HLT_OFF(DPMI_return_from_ext_exception)) {
+	  if (in_dpmi_pm_stack) {
+	    in_dpmi_pm_stack--;
+	    if (!in_dpmi_pm_stack && _ss != DPMI_CLIENT.PMSTACK_SEL) {
+	      error("DPMI: Client's PM Stack corrupted during ext exception handling!\n");
+//	      leavedos(91);
+	    }
+	  }
+          error("DPMI: Return from client extended exception handler, "
+	    "in_dpmi_pm_stack=%i\n", in_dpmi_pm_stack);
+
+	  /* poping error code */
+	  ssp += 2;
+	  _eip = *((unsigned long *) ssp), ssp += 2;
+	  _cs = *ssp++;
+	  ssp++;
+	  _eflags = *((unsigned long *) ssp), ssp += 2;
+	  _esp = *((unsigned long *) ssp), ssp += 2;
+	  _ss = *ssp++;
+	  ssp++;
+	  _es = *ssp++;
+	  ssp++;
+	  _ds = *ssp++;
+	  ssp++;
+	  _fs = *ssp++;
+	  ssp++;
+	  _gs = *ssp++;
+	  ssp++;
 
 	  if (_eflags & IF)
 	    dpmi_sti();
