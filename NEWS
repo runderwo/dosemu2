@@ -4,16 +4,15 @@ NEWS file for DOSEMU
 This file contains a list of user visible changes in DOSEMU. For the
 raw developer changelog please refer to ChangeLog.
 
-Version 1.3.1 (2004-07-11)
+Version 1.2.2 (2004-07-11)
 =============
-* Support for 32rtm extender was added. It is now possible to use the
-  32bit Borland tools under dosemu.
-* Support for the HX DOS Extender was added. It is now possible to run
-  some win32 console apps under dosemu, using that extender.
-* The Blinker extender is now fully supported (all known versions).
-  But some older versions of that extender may require the 2.4.x linux
-  kernel (linux-2.6.8 will include the necessary fix).
-* Improved DPMI uncommitted memory support (started in 1.3.0).
+* Backported bitmap font support for xdosemu from the development code.
+  These are used by default! If you want to use the X fonts you must
+  explicitly set $_X_font="vga" or use "xmode -font vga" at the DOS
+  prompt. $_X_bilin_filt=(on) may help for prettier fonts in full-screen
+  mode and scaled windows.
+* Backported via-Unicode translations for filenames on lredir'ed drives
+  (from iso-8859x to cpxxx and so on).
 * The hogtheshold code was reorganized to be able to pass through certain
   events quicker (such as loading a file in FreeDOS EDIT) even when you 
   have it set to "1".
@@ -25,19 +24,19 @@ Version 1.3.1 (2004-07-11)
   (2.6.7-mm kernels only for now)
 * Implemented VxD hooks for WinOS2: seems to solve all remaining problems with
   Win3.1(WinOS2): allows Alt-Tab and the timer.
-* Many DPMI and DOS extender fixes.
+* Some non-intrusive DPMI and DOS extender fixes.
 * An automatic backtrace using GDB (output in ~/.dosemu/boot.log)
   is attempted when DOSEMU crashes.
 * Serial code fixes.
 * Corrected int15/ax=e801 for so $_xms > 64M is reported correctly by MEM.
 * Fix NPTL issues when switching VC's on the console.
 * Check /proc/net/ipx/route etc for kernel 2.6.x.
-* LFN (long file name) fixes. Still needs more testing
+* Fixed read/write problem for files with negative file offsets on
+  lredir'ed drives.
 
 List of SourceForge tracker numbers with bugs that were closed:
 #885692 (Support) Serial port problem
-#902742 bug in DOSEMU's DOS API translation
-#909015 bugs/suggestions concerning DOSEMU's DPMI implementation
+#909015 bugs/suggestions concerning DOSEMU's DPMI implementation (partly)
 #909588 keystroke command kills dosemu
 #911174 Problem with graphics under X
 #929123 Microsoft LINK.EXE 5.31.009 causes segmentation fault

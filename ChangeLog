@@ -1,3 +1,19 @@
+2004/07/11 ver 1.2.2 released
+	From Bart
+	- Fixed VGAEMU regressions (#982872, #958717)
+	- Implemented CGA colour palette support
+	- Check for failed lseeks before reads and writes (may happen if the
+	  file offset is negative). Thanks to Jan Zuchhold <Jan@Zuchhold.com>
+	- Remove "fast" i/o port restrictions for ports > 0x3ff. Should
+	  only work with 2.6.7-mm kernels for the time being.
+	- Only initialize the xterm mouse once (#959015)
+	- Fix zx_emul vertical bar problem (#911174)
+	- Fix problem with S3 cards and the portserver (#984975) (Thanks
+	  to Stas and Reinhard).
+	From Stas
+	- EMS fixes
+	- Implement VxD hooks for WinOS2. Seems to solve all remaining
+	  problems with Win3.1(WinOS2) namely: Alt-Tab and Timer work now
 2004/06/30 ver 1.2.1.2 unofficial pre-release
 	From Stas
 	- Refer to our documentation for the CPU esp bug.
