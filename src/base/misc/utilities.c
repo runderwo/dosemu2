@@ -39,9 +39,9 @@
  *
  *                                     --Hans 990213
  */
-#define SHOW_TIME	0		/* 0 or 1 */
-#define LOG_CSIP	1
-#define LOG_CALLER	1 
+#define SHOW_TIME		0		/* 0 or 1 */
+#define LOG_CSIP		0
+#define LOG_CALLER	0 
 
 #if LOG_CALLER 
 #include <pthread.h>
@@ -177,7 +177,7 @@ int vlog_printf(int flg, const char *fmt, va_list args)
 
 #if LOG_CSIP
     /* Only log IP if format contains a newline, to avoid being interpolated
-     * into the middle of a log line. */
+     * into the middle of some incrementally constructed log line. */
     if (strstr(fmt, "\n") != NULL) {
       boolean_t vm86_called = FALSE;
       boolean_t dpmi_called = FALSE;
