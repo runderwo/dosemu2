@@ -75,21 +75,11 @@ static void midopipe_write(unsigned char val)
 	    return;
 	}
     }
-    int retry = 0;
-    do {
-	if (write(pipe_fd, &val, 1) == -1) {
-	    switch (errno) {
-		case EAGAIN:
-		case EINTR:
-		    retry = 1;
-		default: /* all other errors incl. EPIPE */
-		    close(pipe_fd);
-		    pipe_fd = -1;
-		    retry = 0;
-		    break;
-	    }
-	}
-    } while (retry);
+    if (write(pipe_fd, &val, 1) == -1) {
+	error("MIDI: Error writing to %s, resetting: %s\n", midopipe_name, strerror(errno));
+	close(pipe_fd);
+	pipe_fd = -1;
+    }
 }
 
 CONSTRUCTOR(static int midopipe_register(void))

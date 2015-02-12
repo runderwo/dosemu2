@@ -1,9 +1,19 @@
 #!/bin/sh
-set -e
-srcdir=`realpath "$(dirname $0)"`
-for dir in . src/plugin/kbd_unicode src/plugin/sdl; do
+
+srcdir=`pwd`
+echo "Regenerating toplevel configure script..."
+if ! autoreconf --install --force --warnings=all ; then
+	echo "Failure!"
+	exit 1
+fi
+./mkpluginhooks
+echo "Regenerating plugin configure scripts..."
+for dir in `cat plugin_configure`; do
+	echo "Regenerating configure script for $dir..."
 	cd "${srcdir}/${dir}"
-	autoreconf --install --force --warnings=all
+	if ! autoreconf --install --force --warnings=all ; then
+		rm -f ./configure
+		echo "Failed generating configure for $dir"
+	fi
 done
 cd $srcdir
-sh ./default-configure

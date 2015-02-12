@@ -407,6 +407,22 @@ static void sig_child(int sig, siginfo_t *si, void *uc)
   dpmi_iret_setup(scp);
 }
 
+void leavedos_from_sig(int sig)
+{
+  dbug_printf("Terminating on signal %i\n", sig);
+  if (ld_sig) {
+    error("leavedos re-entered, exiting\n");
+    _exit(3);
+  }
+  ld_sig = sig;
+  SIGNAL_save(leavedos_call, &sig, sizeof(sig), __func__);
+  /* abort current sighandlers */
+  if (in_handle_signals) {
+    g_printf("Interrupting active signal handlers\n");
+    in_handle_signals = 0;
+  }
+}
+
 __attribute__((no_instrument_function))
 static void leavedos_signal(int sig, siginfo_t *si, void *uc)
 {
@@ -417,15 +433,7 @@ static void leavedos_signal(int sig, siginfo_t *si, void *uc)
     error("gracefull exit failed, aborting (sig=%i)\n", sig);
     _exit(sig);
   }
-  dbug_printf("Terminating on signal %i\n", sig);
-  ld_sig = sig;
-  SIGNAL_save(leavedos_call, &sig, sizeof(sig), __func__);
-  /* abort current sighandlers */
-  if (in_handle_signals) {
-    g_printf("Interrupting active signal handlers\n");
-    in_handle_signals = 0;
-  }
-  /* process it now */
+  leavedos_from_sig(sig);
   if (in_dpmi && !in_vm86)
     dpmi_sigio(scp);
   dpmi_iret_setup(scp);
@@ -653,6 +661,7 @@ signal_pre_init(void)
 void
 signal_init(void)
 {
+  dosemu_tid = gettid();
   sh_tid = coopth_create("signal handling");
   /* normally we don't need ctx handlers because the thread is detached.
    * But some crazy code (vbe.c) can call coopth_attach() on it, so we

@@ -72,11 +72,10 @@ struct render_system Render_SDL =
    unlock_surface,
 };
 
-static SDL_Texture *texture;
+static SDL_Surface *surface;
 static SDL_Renderer *renderer;
 static SDL_Window *window;
 static ColorSpaceDesc SDL_csd;
-static Uint32 pix_fmt;
 static int font_width, font_height;
 static int w_x_res, w_y_res;
 static int m_x_res, m_y_res;
@@ -198,10 +197,14 @@ int SDL_priv_init(void)
   ret = SDL_Init(SDL_INIT_VIDEO);
   leave_priv_setting();
   if (ret < 0) {
-    error("SDL: %s\n", SDL_GetError());
+    error("SDL init: %s\n", SDL_GetError());
     config.exitearly = 1;
     init_failed = 1;
     return -1;
+  }
+  if (config.sdl_nogl) {
+    v_printf("SDL: Disabling OpenGL framebuffer acceleration\n");
+    SDL_SetHint(SDL_HINT_FRAMEBUFFER_ACCELERATION, "0");
   }
   return 0;
 }
@@ -210,11 +213,15 @@ int SDL_init(void)
 {
   Uint32 flags = SDL_WINDOW_HIDDEN;
   int remap_src_modes, bpp, features;
-  Uint32 rm, gm, bm, am;
+  Uint32 rm, gm, bm, am, pix_fmt;
 
   if (init_failed)
     return -1;
 
+  if(config.X_lin_filt || config.X_bilin_filt) {
+    v_printf("SDL: enabling scaling filter\n");
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
+  }
   if (config.X_fullscreen)
     flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
   else
@@ -226,8 +233,7 @@ int SDL_init(void)
     init_failed = 1;
     return -1;
   }
-  renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED |
-    SDL_RENDERER_TARGETTEXTURE);
+  renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
   if (!renderer) {
     error("SDL renderer failed\n");
     init_failed = 1;
@@ -272,6 +278,8 @@ int SDL_init(void)
 
 void SDL_close(void)
 {
+  if (!initialized)
+    return;
   remapper_done();
   vga_emu_done();
 #ifdef X_SUPPORT
@@ -279,9 +287,18 @@ void SDL_close(void)
     X_close_text_display();
 #endif
   SDL_DestroyRenderer(renderer);
-  SDL_DestroyTexture(texture);
+  SDL_FreeSurface(surface);
   SDL_DestroyWindow(window);
   SDL_Quit();
+}
+
+static void do_redraw(void)
+{
+  SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
+  SDL_RenderClear(renderer);
+  SDL_RenderCopy(renderer, texture, NULL, NULL);
+  SDL_RenderPresent(renderer);
+  SDL_DestroyTexture(texture);
 }
 
 static void SDL_update(void)
@@ -303,11 +320,13 @@ static void SDL_update(void)
    * can easily be faster to just update the entire screen though. */
 #if UPDATE_BY_RECTS
   if (sdl_rects.num > 0) {
+    SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
     for (i = 0; i < sdl_rects.num; i++) {
       const SDL_Rect *rec = &sdl_rects.rects[i];
       SDL_RenderCopy(renderer, texture, rec, rec);
     }
     SDL_RenderPresent(renderer);
+    SDL_DestroyTexture(texture);
     sdl_rects.num = 0;
   }
   pthread_mutex_unlock(&update_mtx);
@@ -315,36 +334,35 @@ static void SDL_update(void)
   i = sdl_rects.num;
   sdl_rects.num = 0;
   pthread_mutex_unlock(&update_mtx);
-  if (i > 0) {
-    SDL_RenderClear(renderer);
-    SDL_RenderCopy(renderer, texture, NULL, NULL);
-    SDL_RenderPresent(renderer);
-  }
+  if (i > 0)
+    do_redraw();
 #endif
   pthread_mutex_unlock(&mode_mtx);
 }
 
 static void SDL_redraw(void)
 {
+#ifdef X_SUPPORT
+  if (x11.display && !use_bitmap_font && vga.mode_class == TEXT) {
+    redraw_text_screen();
+    return;
+  }
+#endif
   pthread_mutex_lock(&mode_mtx);
-  SDL_RenderClear(renderer);
-  SDL_RenderCopy(renderer, texture, NULL, NULL);
-  SDL_RenderPresent(renderer);
+  do_redraw();
   pthread_mutex_unlock(&mode_mtx);
 }
 
 static struct bitmap_desc lock_surface(void)
 {
-  void *pixels;
-  int pitch;
   pthread_mutex_lock(&mode_mtx);
-  SDL_LockTexture(texture, NULL /* TODO: RECT */, &pixels, &pitch);
-  return BMP(pixels, w_x_res, w_y_res, pitch);
+  SDL_LockSurface(surface);
+  return BMP(surface->pixels, w_x_res, w_y_res, surface->pitch);
 }
 
 static void unlock_surface(void)
 {
-  SDL_UnlockTexture(texture);
+  SDL_UnlockSurface(surface);
   pthread_mutex_unlock(&mode_mtx);
 }
 
@@ -361,7 +379,7 @@ int SDL_set_videomode(int mode_class, int text_width, int text_height)
   );
 
 
-  if(vga.mode_class == TEXT) {
+  if (vga.mode_class == TEXT) {
     pthread_mutex_lock(&mode_mtx);
     if (use_bitmap_font) {
       SDL_change_mode(vga.width, vga.height);
@@ -398,22 +416,18 @@ static void set_resizable(int on, int x_res, int y_res)
 static void SDL_change_mode(int x_res, int y_res)
 {
   v_printf("SDL: using mode %d %d %d\n", x_res, y_res, SDL_csd.bits);
-  if (texture)
-    SDL_DestroyTexture(texture);
-  if (config.X_fixed_aspect)
-    SDL_RenderSetLogicalSize(renderer, x_res, y_res);
-  /* render hint needs to be set before creating texture,
-   * otherwise it doesn't work, strange */
-  if(config.X_lin_filt || config.X_bilin_filt) {
-    v_printf("SDL: enabling scaling filter\n");
-    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
-  }
-  texture = SDL_CreateTexture(renderer, pix_fmt, SDL_TEXTUREACCESS_STREAMING,
-    x_res, y_res);
-  if (!texture) {
-    error("SDL texture failed\n");
+  if (surface)
+    SDL_FreeSurface(surface);
+  surface = SDL_CreateRGBSurface(0, x_res, y_res, SDL_csd.bits,
+	SDL_csd.r_mask, SDL_csd.g_mask, SDL_csd.b_mask, 0);
+  if (!surface) {
+    error("SDL surface failed\n");
     leavedos(99);
   }
+  SDL_FillRect(surface, NULL, SDL_MapRGB(surface->format, 0, 0, 0));
+
+  if (config.X_fixed_aspect)
+    SDL_RenderSetLogicalSize(renderer, x_res, y_res);
   SDL_SetWindowSize(window, x_res, y_res);
   set_resizable(use_bitmap_font || vga.mode_class == GRAPH, x_res, y_res);
   SDL_ShowWindow(window);
@@ -650,6 +664,9 @@ static void SDL_handle_events(void)
         }
         SDL_redraw();
         break;
+      case SDL_WINDOWEVENT_EXPOSED:
+        SDL_redraw();
+        break;
     }
     break;
 
@@ -753,6 +770,14 @@ static void SDL_handle_events(void)
        break;
      }
    }
+
+#ifdef X_SUPPORT
+  if (x11.display && !use_bitmap_font && vga.mode_class == TEXT &&
+	X_handle_text_expose()) {
+    /* need to check separately because SDL_VIDEOEXPOSE is eaten by SDL */
+    redraw_text_screen();
+  }
+#endif
 }
 
 static int SDL_mouse_init(void)

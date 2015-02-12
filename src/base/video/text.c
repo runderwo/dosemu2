@@ -449,7 +449,7 @@ void init_text_mapper(int image_mode, int features, ColorSpaceDesc *csd)
   assert(!text_remap);
 
   /* linear 1 byte per pixel */
-  text_remap = remap_init(MODE_PSEUDO_8, image_mode, features, csd);
+  text_remap = remap_init(image_mode, features, csd);
 }
 
 void done_text_mapper(void)
@@ -573,7 +573,9 @@ int update_text_screen(void)
     vga.reconfig.mem = 0;
     return 0;
   } else {
-    refresh_text_palette();
+    int refr = refresh_text_palette();
+    if (refr)
+      dirty_text_screen();
   }
 
   /* The following determines how many lines it should scan at once,
