@@ -228,7 +228,7 @@ static void refresh_graphics_palette(void)
     dirty_all_video_pages();
 }
 
-void get_mode_parameters(int *wx_res, int *wy_res)
+void get_mode_parameters(int *x_res_p, int *y_res_p, int *wx_res, int *wy_res)
 {
   int x_res, y_res, w_x_res, w_y_res;
 
@@ -287,6 +287,8 @@ void get_mode_parameters(int *wx_res, int *wy_res)
 
   *wx_res = w_x_res;
   *wy_res = w_y_res;
+  *x_res_p = x_res;
+  *y_res_p = y_res;
 }
 
 /*
@@ -467,12 +469,9 @@ int render_is_updating(void)
 static void *render_thread(void *arg)
 {
   while (1) {
-    is_updating = 0;
-    pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
-    /* small delay til we have a controlled framerate */
-    usleep(5000);
     sem_wait(&render_sem);
     pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+    vga_emu_update_lock();
     is_updating = 1;
     switch (vga.mode_class) {
     case TEXT:
@@ -495,6 +494,11 @@ static void *render_thread(void *arg)
       v_printf("VGA not yet initialized\n");
       break;
     }
+    is_updating = 0;
+    vga_emu_update_unlock();
+    pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+    /* small delay til we have a controlled framerate */
+    usleep(5000);
   }
   return NULL;
 }
