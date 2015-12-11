@@ -52,6 +52,7 @@ static int sb_hdma_tab[] = { 5, 6, 7 };
 
 static struct sb_struct sb;
 
+static Bit8u sb_mixer_read(void);
 
 static int sb_get_dsp_irq_num(void)
 {
@@ -996,7 +997,7 @@ static void sb_dsp_write(Bit8u value)
 	break;
 
     default:
-	S_printf("SB: ERROR: Unsupported command\n");
+	S_printf("SB: ERROR: Unsupported command 0x%x\n", sb.command[0]);
     }
 
     sb.command_idx = 0;
@@ -1024,13 +1025,32 @@ static void sb_mixer_write(Bit8u value)
 	sb_mixer_reset();
 	break;
 
+    case 0x02:
+	S_printf("SB: Warning: SBPro CT-1345 master output control is not supported!\n");
+	break;
+
     case 0x04:
 	sb.mixer_regs[0x32] = (value & 0xf0) | 8;
 	sb.mixer_regs[0x33] = (value << 4) | 8;
 	break;
 
+    case 0x06:
+	S_printf("SB: Warning: SBPro CT-1345 FM output control is not supported!\n");
+	break;
+
     case 0x0A:
 	sb.mixer_regs[0x3A] = (value << 5) | 0x18;
+	break;
+
+    case 0x0C:
+	/* 0x0C is ignored - sets record source and a filter */
+	S_printf("SB: Warning: SBPro CT-1345 input filter is not supported!\n");
+	break;
+
+    case 0x0E:
+	S_printf("SB: Warning: SBPro CT-1345 output filter is not supported!\n");
+	if ((sb_mixer_read() & 2) ^ (value & 2))
+	    S_printf("Stereo output setting will be ineffective!\n");
 	break;
 
     case 0x22:
@@ -1053,24 +1073,39 @@ static void sb_mixer_write(Bit8u value)
 	sb.mixer_regs[0x39] = (value << 4) | 8;
 	break;
 
-    case 0x38:
-    case 0x39:
+    case 0x30: /* Master volume left */
+    case 0x31: /* Master volume right */
+    case 0x32: /* DAC level left */
+    case 0x33: /* DAC level right */
+    case 0x34: /* FM level left */
+    case 0x35: /* FM level right */
+    case 0x36: /* CD level left */
+    case 0x37: /* CD level right */
+	S_printf("SB: Warning: Ignoring SB16+ volume control %02x\n", sb.mixer_index);
+	break;
+
+    case 0x38: /* Line-in level left */
+    case 0x39: /* Line-in level right */
 	if (line_enabled() && (sb.mixer_regs[0x38] || sb.mixer_regs[0x39]))
 	    dspio_input_enable(sb.dspio, MC_LINE);
 	else
 	    dspio_input_disable(sb.dspio, MC_LINE);
 	break;
 
-    case 0x3a:
+    case 0x3a: /* Microphone level */
 	if (mic_enabled() && sb.mixer_regs[0x3a])
 	    dspio_input_enable(sb.dspio, MC_MIC);
 	else
 	    dspio_input_disable(sb.dspio, MC_MIC);
 	break;
 
-    case 0x3c:
-    case 0x3d:
-    case 0x3e:
+    case 0x3b: /* PC speaker level */
+	S_printf("SB: Warning: Ignoring SB16+ PC speaker level\n");
+	break;
+
+    case 0x3c: /* Output control */
+    case 0x3d: /* Input control left */
+    case 0x3e: /* Input control right */
 	if (delta & 0x18) {
 	    if (line_enabled() && (sb.mixer_regs[0x38] || sb.mixer_regs[0x39]))
 		dspio_input_enable(sb.dspio, MC_LINE);
@@ -1084,6 +1119,35 @@ static void sb_mixer_write(Bit8u value)
 	    else
 		dspio_input_disable(sb.dspio, MC_MIC);
 	}
+	break;
+
+    case 0x3f: /* Input gain control left */
+    case 0x40: /* Input gain control right */
+    case 0x41: /* Output gain control left */
+    case 0x42: /* Output gain control right */
+    case 0x43: /* Automatic gain control */
+    case 0x44: /* Treble Left */
+    case 0x45: /* Treble Right */
+    case 0x46: /* Base Left */
+    case 0x47: /* Bass Right */
+	S_printf("SB: Warning: Ignoring SB16+ volume control %02x\n", sb.mixer_index);
+	break;
+
+    case 0x80:
+	S_printf("SB: Warning: SB16+ IRQ select by mixer not supported!\n");
+	break;
+
+    case 0x81:
+	S_printf("SB: Warning: SB16+ DMA select by mixer not supported!\n");
+	break;
+
+    case 0x83:
+	/* SB16 MPU401 fix program "fixes" by writing 0xB and "unfixes" by
+	 * writing 0xF here.  Effect is unknown, but is said to fix GM in games
+	 * like XWing, Star Wars Dark Forces, Doom, Wacky Wheels, etc.  Maybe
+	 * related to a MPU401 quirk that should be emulated. */
+	S_printf("SB: Warning: Ignoring write of %02x to unknown SBMPU401.EXE "
+		 "register\n", value);
 	break;
     }
 }
@@ -1115,6 +1179,11 @@ static Bit8u sb_mixer_read(void)
 
     case 0x2E:
 	val = (sb.mixer_regs[0x38] & 0xf0) | (sb.mixer_regs[0x39] >> 4);
+	break;
+
+    case 0x82:
+	S_printf("SB: Warning: SB16+ IRQ status from mixer not supported!\n");
+	val = 0;
 	break;
 
     default:
