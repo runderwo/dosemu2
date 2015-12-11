@@ -297,9 +297,8 @@ void dump_config_status(void (*printfunc)(const char *, ...))
 	}
     }
 
-    (*print)("\nSOUND:\nengine %d\nsb_base 0x%x\nsb_dma %d\nsb_hdma %d\nsb_irq %d\n"
-	"mpu401_base 0x%x\nmpu401_irq %i\nsound_driver \"%s\"\n",
-        config.sound, config.sb_base, config.sb_dma, config.sb_hdma, config.sb_irq,
+    (*print)("\nSOUND:\nengine %d\nsb_type %d\nsb_base 0x%x\nsb_dma %d\nsb_hdma %d\nsb_irq %d\n",
+        config.sound, config.sb_type, config.sb_base, config.sb_dma, config.sb_hdma, config.sb_irq,
 	config.mpu401_base, config.mpu401_irq, config.sound_driver);
     (*print)("pcm_hpf %i\nmidi_file %s\nwav_file %s\n",
 	config.pcm_hpf, config.midi_file, config.wav_file);

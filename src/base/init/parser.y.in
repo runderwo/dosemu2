@@ -299,7 +299,7 @@ while (0)
 	/* hardware ram mapping */
 %token HARDWARE_RAM
         /* Sound Emulation */
-%token SB_BASE SB_IRQ SB_DMA SB_HDMA MPU_BASE MPU_IRQ
+%token SB_TYPE SB_BASE SB_IRQ SB_DMA SB_HDMA MPU_BASE MPU_IRQ
 %token SOUND_DRIVER MIDI_DRIVER PCM_HPF MIDI_FILE WAV_FILE
 	/* CD-ROM */
 %token CDROM
@@ -1092,7 +1092,8 @@ dexeflag	: ALLOWDISK	{ if (!priv_lvl) dexe_forbid_disk = 0; }
 sound_flags	: sound_flag
 		| sound_flags sound_flag
 		;
-sound_flag	: SB_BASE expression	{ config.sb_base = $2; }
+sound_flag	: SB_TYPE expression { config.sb_type = $2; }
+		| SB_BASE expression	{ config.sb_base = $2; }
 		| SB_DMA expression	{ config.sb_dma = $2; }
 		| SB_HDMA expression { config.sb_hdma = $2; }
 		| SB_IRQ expression	{ config.sb_irq = $2; }

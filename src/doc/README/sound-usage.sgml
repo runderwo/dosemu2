@@ -160,6 +160,7 @@ addressed at a later stage.
 
 <screen>
 $_sound = (off)		# sound support on/off
+$_sb_type = (6)
 $_sb_base = (0x220)
 $_sb_irq = (5)
 $_sb_dma = (1)

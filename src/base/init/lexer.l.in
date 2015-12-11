@@ -618,6 +618,7 @@ nogl			RETURN(SDL_NOGL);
 
         /* Sound stuff */
 
+sb_type                 RETURN(SB_TYPE);
 sb_base                 RETURN(SB_BASE);
 sb_irq                  RETURN(SB_IRQ);
 sb_dma                  RETURN(SB_DMA);

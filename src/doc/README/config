@@ -1165,6 +1165,7 @@ sound-usage.txt.
 
 <screen>
 $_sound = (on)            # sound support on/off
+$_sb_type = (6)           # type 6 (SB16)
 $_sb_base = (0x220)       # base IO-address (HEX)
 $_sb_irq = (5)            # IRQ
 $_sb_dma = (1)            # Low 8-bit DMA channel

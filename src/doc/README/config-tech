@@ -3461,6 +3461,14 @@ a few that cause problems.
 <term>sb_base</term>
 <listitem>
 <para>
+  type of the SB (1 = SB1.0/1.5; 2 = SBPro; 3 = SB2.0; 4 = SBPro 2; 6 = SB16/AWE)
+</para>
+</listitem></varlistentry>
+<varlistentry>
+<varlistentry>
+<term>sb_base</term>
+<listitem>
+<para>
   base address of the SB (HEX)
 </para>
 </listitem></varlistentry>

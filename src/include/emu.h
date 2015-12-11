@@ -325,6 +325,7 @@ typedef struct config_info {
 
        /* Sound emulation */
        int sound;
+       int sb_type;
        uint16_t sb_base;
        uint8_t sb_dma;
        uint8_t sb_hdma;
